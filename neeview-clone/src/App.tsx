@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Toolbar } from './components/Toolbar/Toolbar'
 import { FileList } from './components/FileList/FileList'
 import { ImageViewer } from './components/ImageViewer/ImageViewer'
@@ -6,7 +6,7 @@ import { VideoPlayer } from './components/VideoPlayer/VideoPlayer'
 import { WindowControls } from './components/WindowControls/WindowControls'
 import { MediaFileInfo, ScanOptions } from './types/electron'
 
-export type MediaFile = MediaFileInfo & {
+export type MediaFile = Omit<MediaFileInfo, 'modified'> & {
   modified: Date
 }
 

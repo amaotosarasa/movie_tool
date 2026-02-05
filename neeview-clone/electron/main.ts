@@ -1,7 +1,8 @@
 import { app, BrowserWindow, shell, ipcMain, dialog, protocol } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { readFileSync } from 'fs'
+import { readdirSync, statSync } from 'fs'
+import { extname } from 'path'
 
 function createWindow(): void {
   // Create the browser window.
@@ -27,9 +28,13 @@ function createWindow(): void {
 
   // Remove CSP headers for development
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    delete details.responseHeaders['content-security-policy']
-    delete details.responseHeaders['x-frame-options']
-    callback({ responseHeaders: details.responseHeaders })
+    if (details.responseHeaders) {
+      delete details.responseHeaders['content-security-policy']
+      delete details.responseHeaders['x-frame-options']
+      callback({ responseHeaders: details.responseHeaders })
+    } else {
+      callback({})
+    }
   })
 
   // Debug: Log any errors
@@ -41,7 +46,7 @@ function createWindow(): void {
     console.error('Renderer process became unresponsive')
   })
 
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription) => {
     console.error('Failed to load:', errorCode, errorDescription)
   })
 
@@ -166,4 +171,114 @@ function setupIpcHandlers() {
     const window = BrowserWindow.getFocusedWindow()
     if (window) window.close()
   })
+
+  // Folder scanning handler
+  ipcMain.handle('folder:scan', async (_, folderPath: string, scanOptions: any) => {
+    try {
+      const mediaFiles = await scanFolderForMediaFiles(folderPath, scanOptions)
+      return mediaFiles
+    } catch (error) {
+      console.error('Failed to scan folder:', error)
+      throw error
+    }
+  })
+}
+
+interface MediaFileInfo {
+  path: string
+  name: string
+  type: 'image' | 'video' | 'unknown'
+  size: number
+  modified: number
+}
+
+interface ScanOptions {
+  includeSubfolders?: boolean
+  sortBy?: 'name' | 'date' | 'size' | 'type'
+  sortOrder?: 'asc' | 'desc'
+  fileTypes?: string[]
+}
+
+async function scanFolderForMediaFiles(folderPath: string, options: ScanOptions = {}): Promise<MediaFileInfo[]> {
+  const {
+    includeSubfolders = false,
+    sortBy = 'name',
+    sortOrder = 'asc',
+    fileTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
+  } = options
+
+  const mediaFiles: MediaFileInfo[] = []
+
+  function getFileType(extension: string): 'image' | 'video' | 'unknown' {
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+    const videoExts = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
+
+    const ext = extension.toLowerCase()
+    if (imageExts.includes(ext)) return 'image'
+    if (videoExts.includes(ext)) return 'video'
+    return 'unknown'
+  }
+
+  function scanDirectory(dirPath: string) {
+    try {
+      const items = readdirSync(dirPath, { withFileTypes: true })
+
+      for (const item of items) {
+        const fullPath = join(dirPath, item.name)
+
+        if (item.isDirectory() && includeSubfolders) {
+          scanDirectory(fullPath)
+        } else if (item.isFile()) {
+          const extension = extname(item.name).slice(1).toLowerCase()
+
+          if (fileTypes.includes(extension)) {
+            try {
+              const stats = statSync(fullPath)
+              const fileType = getFileType(extension)
+
+              if (fileType !== 'unknown') {
+                mediaFiles.push({
+                  path: fullPath,
+                  name: item.name,
+                  type: fileType,
+                  size: stats.size,
+                  modified: stats.mtime.getTime()
+                })
+              }
+            } catch (statError) {
+              console.warn(`Failed to get stats for file: ${fullPath}`, statError)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to read directory: ${dirPath}`, error)
+    }
+  }
+
+  scanDirectory(folderPath)
+
+  // Sort files based on options
+  mediaFiles.sort((a, b) => {
+    let comparison = 0
+
+    switch (sortBy) {
+      case 'name':
+        comparison = a.name.localeCompare(b.name)
+        break
+      case 'date':
+        comparison = a.modified - b.modified
+        break
+      case 'size':
+        comparison = a.size - b.size
+        break
+      case 'type':
+        comparison = a.type.localeCompare(b.type)
+        break
+    }
+
+    return sortOrder === 'desc' ? -comparison : comparison
+  })
+
+  return mediaFiles
 }
