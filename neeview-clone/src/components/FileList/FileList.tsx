@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { MediaFile } from '../../App'
 
 interface FileListProps {
@@ -8,7 +8,7 @@ interface FileListProps {
 }
 
 export function FileList({ files, currentIndex, onFileSelect }: FileListProps) {
-  const getFileIcon = (file: MediaFile): string => {
+  const getFileIcon = useMemo(() => (file: MediaFile): string => {
     switch (file.type) {
       case 'image':
         return '🖼️'
@@ -17,15 +17,25 @@ export function FileList({ files, currentIndex, onFileSelect }: FileListProps) {
       default:
         return '📄'
     }
-  }
+  }, [])
 
-  const formatFileSize = (bytes: number): string => {
+  const formatFileSize = useMemo(() => (bytes: number): string => {
     if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-  }
+  }, [])
+
+  const formatDate = useMemo(() => (date: Date): string => {
+    return date.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }, [])
 
   if (files.length === 0) {
     return (
@@ -58,18 +68,23 @@ export function FileList({ files, currentIndex, onFileSelect }: FileListProps) {
             key={file.path}
             className={`file-item ${index === currentIndex ? 'selected' : ''}`}
             onClick={() => onFileSelect(file, index)}
-            title={file.path}
+            title={`${file.path}\n更新: ${formatDate(file.modified)}\nサイズ: ${formatFileSize(file.size)}`}
           >
             <div className="flex items-center space-x-2">
-              <span className="text-lg">{getFileIcon(file)}</span>
+              <span className="text-lg flex-shrink-0">{getFileIcon(file)}</span>
               <div className="flex-1 min-w-0">
-                <div className="text-sm truncate">
+                <div className="text-sm truncate font-medium">
                   {file.name}
                 </div>
-                <div className="text-xs text-gray-500">
-                  {formatFileSize(file.size)}
+                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                  <span>{formatFileSize(file.size)}</span>
+                  <span>•</span>
+                  <span>{formatDate(file.modified)}</span>
                 </div>
               </div>
+              {index === currentIndex && (
+                <span className="text-blue-400 flex-shrink-0">▶</span>
+              )}
             </div>
           </div>
         ))}
