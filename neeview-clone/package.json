@@ -6,6 +6,7 @@
   "type": "module",
   "author": "Developer",
   "license": "MIT",
+  "private": true,
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
