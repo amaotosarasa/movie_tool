@@ -10,10 +10,26 @@ export interface IElectronAPI {
   }
 }
 
+export interface MediaFileInfo {
+  path: string
+  name: string
+  type: 'image' | 'video' | 'unknown'
+  size: number
+  modified: number
+}
+
+export interface ScanOptions {
+  includeSubfolders?: boolean
+  sortBy?: 'name' | 'date' | 'size' | 'type'
+  sortOrder?: 'asc' | 'desc'
+  fileTypes?: string[]
+}
+
 export interface IAPI {
   // File operations
   openFile: () => Promise<string | null>
   openDirectory: () => Promise<string | null>
+  scanFolder: (folderPath: string, options?: ScanOptions) => Promise<MediaFileInfo[]>
 
   // Window controls
   minimizeWindow: () => void

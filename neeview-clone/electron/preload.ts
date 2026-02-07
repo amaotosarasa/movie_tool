@@ -15,6 +15,7 @@ const api = {
   // File operations
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
   openDirectory: () => ipcRenderer.invoke('dialog:openDirectory'),
+  scanFolder: (folderPath: string, scanOptions?: any) => ipcRenderer.invoke('folder:scan', folderPath, scanOptions),
 
   // Window controls
   minimizeWindow: () => ipcRenderer.send('app:minimize'),
