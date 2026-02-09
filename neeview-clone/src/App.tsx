@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Toolbar } from './components/Toolbar/Toolbar'
 import { FileList } from './components/FileList/FileList'
 import { ImageViewer } from './components/ImageViewer/ImageViewer'
 import { VideoPlayer } from './components/VideoPlayer/VideoPlayer'
 import { WindowControls } from './components/WindowControls/WindowControls'
-import { MediaFileInfo, ScanOptions } from './types/electron'
+import { MediaFileInfo, ScanOptions, ViewMode, BindingDirection } from './types/electron'
 
 export type MediaFile = Omit<MediaFileInfo, 'modified'> & {
   modified: Date
@@ -21,10 +21,60 @@ function App() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [includeSubfolders, setIncludeSubfolders] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('single')
+  const [bindingDirection, setBindingDirection] = useState<BindingDirection>('right-to-left')
+
+  // 見開きモードでのペアインデックスの先頭に揃える
+  const getSpreadAlignedIndex = (index: number): number => {
+    if (viewMode === 'single') return index
+    // 表紙（index 0）は単独表示
+    if (index === 0) return 0
+    // index 1以降は奇数インデックスがペアの先頭
+    // ペア: [1,2], [3,4], [5,6], ...
+    if (index % 2 === 0) return index - 1
+    return index
+  }
+
+  // 現在のインデックスから見開きペアを計算
+  const spreadPages = useMemo(() => {
+    if (viewMode === 'single' || files.length === 0) {
+      return { left: currentFile, right: null }
+    }
+
+    const current = files[currentIndex]
+    // 動画ファイルは常に単ページ表示
+    if (current?.type === 'video') {
+      return { left: current, right: null }
+    }
+
+    // 表紙（index 0）は単独表示
+    if (currentIndex === 0) {
+      return { left: current, right: null }
+    }
+
+    // ペア先頭のインデックス（奇数インデックス）
+    const pairStart = getSpreadAlignedIndex(currentIndex)
+    const firstFile = files[pairStart] || null
+    const secondFile = files[pairStart + 1] || null
+
+    // ペアの片方が動画なら単ページ表示
+    if (firstFile?.type === 'video' || secondFile?.type === 'video') {
+      return { left: current, right: null }
+    }
+
+    if (bindingDirection === 'right-to-left') {
+      // 右綴じ：右ページが先、左ページが後（日本の漫画）
+      return { left: secondFile, right: firstFile }
+    } else {
+      // 左綴じ：左ページが先、右ページが後（洋書）
+      return { left: firstFile, right: secondFile }
+    }
+  }, [viewMode, bindingDirection, currentIndex, files, currentFile])
 
   const handleFileSelect = (file: MediaFile, index: number) => {
-    setCurrentFile(file)
-    setCurrentIndex(index)
+    const alignedIndex = getSpreadAlignedIndex(index)
+    setCurrentFile(files[alignedIndex])
+    setCurrentIndex(alignedIndex)
   }
 
   const convertToMediaFile = (fileInfo: MediaFileInfo): MediaFile => ({
@@ -188,7 +238,14 @@ function App() {
 
   const handlePrevious = () => {
     if (files.length > 0 && currentIndex > 0) {
-      const newIndex = currentIndex - 1
+      let newIndex: number
+      if (viewMode === 'spread' && currentIndex > 1) {
+        // 見開きモード：2ページ戻る（ただし表紙を越えない）
+        newIndex = Math.max(currentIndex - 2, 0)
+      } else {
+        newIndex = currentIndex - 1
+      }
+      newIndex = getSpreadAlignedIndex(newIndex)
       setCurrentIndex(newIndex)
       setCurrentFile(files[newIndex])
     }
@@ -196,7 +253,17 @@ function App() {
 
   const handleNext = () => {
     if (files.length > 0 && currentIndex < files.length - 1) {
-      const newIndex = currentIndex + 1
+      let newIndex: number
+      if (viewMode === 'spread' && currentIndex > 0) {
+        // 見開きモード：2ページ進む
+        newIndex = Math.min(currentIndex + 2, files.length - 1)
+      } else if (viewMode === 'spread' && currentIndex === 0) {
+        // 表紙から次へ：index 1へ
+        newIndex = 1
+      } else {
+        newIndex = currentIndex + 1
+      }
+      newIndex = getSpreadAlignedIndex(newIndex)
       setCurrentIndex(newIndex)
       setCurrentFile(files[newIndex])
     }
@@ -258,12 +325,24 @@ function App() {
             rescanFolder()
           }
           break
+        case 's':
+          if (!e.ctrlKey && !e.altKey) {
+            e.preventDefault()
+            setViewMode(prev => prev === 'single' ? 'spread' : 'single')
+          }
+          break
+        case 'r':
+          if (!e.ctrlKey && !e.altKey) {
+            e.preventDefault()
+            setBindingDirection(prev => prev === 'right-to-left' ? 'left-to-right' : 'right-to-left')
+          }
+          break
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentIndex, files])
+  }, [currentIndex, files, viewMode, bindingDirection])
 
   const renderViewer = () => {
     if (error) {
@@ -302,9 +381,26 @@ function App() {
       )
     }
 
+    // 見開きモードで画像ペアがある場合
+    if (viewMode === 'spread' && currentFile.type === 'image' && (spreadPages.left || spreadPages.right)) {
+      return (
+        <ImageViewer
+          file={currentFile}
+          viewMode={viewMode}
+          spreadPages={spreadPages}
+        />
+      )
+    }
+
     switch (currentFile.type) {
       case 'image':
-        return <ImageViewer file={currentFile} />
+        return (
+          <ImageViewer
+            file={currentFile}
+            viewMode="single"
+            spreadPages={{ left: currentFile, right: null }}
+          />
+        )
       case 'video':
         return <VideoPlayer file={currentFile} />
       default:
@@ -340,6 +436,10 @@ function App() {
         sortOrder={sortOrder}
         includeSubfolders={includeSubfolders}
         fileCount={files.length}
+        viewMode={viewMode}
+        bindingDirection={bindingDirection}
+        onViewModeChange={setViewMode}
+        onBindingDirectionChange={setBindingDirection}
       />
 
       <div className="flex flex-1 overflow-hidden">

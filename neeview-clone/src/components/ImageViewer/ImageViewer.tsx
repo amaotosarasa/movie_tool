@@ -1,11 +1,25 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { MediaFile } from '../../App'
+import { ViewMode } from '../../types/electron'
+
+interface SpreadPages {
+  left: MediaFile | null
+  right: MediaFile | null
+}
 
 interface ImageViewerProps {
   file: MediaFile
+  viewMode: ViewMode
+  spreadPages: SpreadPages
 }
 
-export function ImageViewer({ file }: ImageViewerProps) {
+function getImageSrc(file: MediaFile): string {
+  return file.path.startsWith('safe-file:')
+    ? file.path
+    : `safe-file:${file.path.replace(/\\/g, '/')}`
+}
+
+export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
   const [scale, setScale] = useState(1)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -16,6 +30,8 @@ export function ImageViewer({ file }: ImageViewerProps) {
 
   const containerRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
+
+  const isSpread = viewMode === 'spread' && spreadPages.left && spreadPages.right
 
   // Reset view when file changes
   useEffect(() => {
@@ -33,12 +49,15 @@ export function ImageViewer({ file }: ImageViewerProps) {
     const containerWidth = container.clientWidth
     const containerHeight = container.clientHeight
 
-    const scaleX = containerWidth / imageSize.width
+    // 見開き時は半分の幅で計算
+    const availableWidth = isSpread ? containerWidth / 2 : containerWidth
+
+    const scaleX = availableWidth / imageSize.width
     const scaleY = containerHeight / imageSize.height
 
     switch (fitMode) {
       case 'fit':
-        return Math.min(scaleX, scaleY, 1) // Don't scale up beyond 100%
+        return Math.min(scaleX, scaleY, 1)
       case 'width':
         return scaleX
       case 'actual':
@@ -46,13 +65,13 @@ export function ImageViewer({ file }: ImageViewerProps) {
       default:
         return 1
     }
-  }, [imageSize, fitMode])
+  }, [imageSize, fitMode, isSpread])
 
   // Apply fit mode
   useEffect(() => {
     const newScale = calculateFitScale()
     setScale(newScale)
-    setPosition({ x: 0, y: 0 }) // Center image
+    setPosition({ x: 0, y: 0 })
   }, [calculateFitScale])
 
   // Handle image load
@@ -68,7 +87,6 @@ export function ImageViewer({ file }: ImageViewerProps) {
     const delta = e.deltaY > 0 ? 0.9 : 1.1
     const newScale = Math.max(0.1, Math.min(10, scale * delta))
 
-    // Calculate zoom center
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect()
       const centerX = (e.clientX - rect.left - rect.width / 2) / scale
@@ -118,6 +136,16 @@ export function ImageViewer({ file }: ImageViewerProps) {
   // Zoom controls
   const handleZoomIn = () => setScale((prev) => Math.min(10, prev * 1.2))
   const handleZoomOut = () => setScale((prev) => Math.max(0.1, prev / 1.2))
+
+  const imageStyle = {
+    transform: `translate(${position.x}px, ${position.y}px) scale(${scale}) rotate(${rotation}deg)`,
+    cursor: isDragging ? 'grabbing' : 'grab'
+  }
+
+  // 表示するファイル名（見開き時は両ページ）
+  const displayName = isSpread
+    ? `${spreadPages.left!.name} | ${spreadPages.right!.name}`
+    : file.name
 
   return (
     <div className="viewer-container">
@@ -192,26 +220,55 @@ export function ImageViewer({ file }: ImageViewerProps) {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <img
-          ref={imageRef}
-          src={file.path.startsWith('safe-file:') ? file.path : `safe-file:${file.path.replace(/\\/g, '/')}`}
-          alt={file.name}
-          className="max-w-none select-none"
-          style={{
-            transform: `translate(${position.x}px, ${position.y}px) scale(${scale}) rotate(${rotation}deg)`,
-            cursor: isDragging ? 'grabbing' : 'grab'
-          }}
-          onLoad={handleImageLoad}
-          onError={(e) => {
-            console.error('Failed to load image:', file.path, e)
-          }}
-          draggable={false}
-        />
+        {isSpread ? (
+          // 見開き表示
+          <div
+            className="flex items-center justify-center h-full"
+            style={{
+              transform: `translate(${position.x}px, ${position.y}px) scale(${scale}) rotate(${rotation}deg)`,
+              cursor: isDragging ? 'grabbing' : 'grab'
+            }}
+          >
+            <img
+              src={getImageSrc(spreadPages.left!)}
+              alt={spreadPages.left!.name}
+              className="max-w-none select-none h-full object-contain"
+              onLoad={handleImageLoad}
+              onError={(e) => {
+                console.error('Failed to load image:', spreadPages.left!.path, e)
+              }}
+              draggable={false}
+            />
+            <img
+              src={getImageSrc(spreadPages.right!)}
+              alt={spreadPages.right!.name}
+              className="max-w-none select-none h-full object-contain"
+              onError={(e) => {
+                console.error('Failed to load image:', spreadPages.right!.path, e)
+              }}
+              draggable={false}
+            />
+          </div>
+        ) : (
+          // 単ページ表示
+          <img
+            ref={imageRef}
+            src={getImageSrc(file)}
+            alt={file.name}
+            className="max-w-none select-none"
+            style={imageStyle}
+            onLoad={handleImageLoad}
+            onError={(e) => {
+              console.error('Failed to load image:', file.path, e)
+            }}
+            draggable={false}
+          />
+        )}
       </div>
 
       {/* Image Info */}
       <div className="absolute bottom-4 left-4 z-10 bg-black bg-opacity-50 rounded-lg p-2 text-xs text-white">
-        <div>{file.name}</div>
+        <div>{displayName}</div>
         {imageSize.width > 0 && imageSize.height > 0 && (
           <div>{imageSize.width} × {imageSize.height}</div>
         )}
