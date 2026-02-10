@@ -58,3 +58,4 @@ pip-delete-this-directory.txt
 *.orig
 
 PLAN.md
+.mcp.json
