@@ -213,6 +213,19 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
     return { x, y }
   }, [getActualSpreadDisplaySize])
 
+  // Handle view mode changes
+  useEffect(() => {
+    console.log('🔄 viewMode changed:', viewMode)
+    // viewMode が変更された場合、適切なフィットモードに設定
+    if (viewMode === 'spread') {
+      console.log('📖 Setting fitMode to width for spread view')
+      setFitMode('width') // 見開きモード時は幅に合わせるモードが適切
+    } else if (viewMode === 'single') {
+      console.log('📄 Setting fitMode to fit for single view')
+      setFitMode('fit') // 単ページモード時はウィンドウに合わせるモードが適切
+    }
+  }, [viewMode])
+
   // Apply fit mode
   useEffect(() => {
     if (!containerRef.current) {
@@ -251,7 +264,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
     )
     // Position updated from fit mode
     setPosition(centerPos)
-  }, [calculateFitScale, imageSize, spreadImageSizes, rotation, isSpread, centerImage])
+  }, [calculateFitScale, imageSize, spreadImageSizes, rotation, isSpread, centerImage, viewMode])
 
   // Handle image load
   const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
