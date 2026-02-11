@@ -37,6 +37,9 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
 
   const isSpread = viewMode === 'spread' && spreadPages.left && spreadPages.right
 
+  // 表紙判定: spreadPages.rightがnullの場合は表紙または単独表示
+  const isCoverPage = !spreadPages.right
+
   // 見開きモード時の実際の合計サイズを取得
   const getSpreadDimensions = useCallback(() => {
     if (!isSpread || !spreadImageSizes.left || !spreadImageSizes.right) {
@@ -215,16 +218,20 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
 
   // Handle view mode changes
   useEffect(() => {
-    console.log('🔄 viewMode changed:', viewMode)
+    console.log('🔄 viewMode changed:', viewMode, 'isCoverPage:', isCoverPage)
     // viewMode が変更された場合、適切なフィットモードに設定
-    if (viewMode === 'spread') {
+    if (isCoverPage) {
+      // 表紙または単独表示の場合は常に'fit'モード
+      console.log('📕 Setting fitMode to fit for cover page')
+      setFitMode('fit')
+    } else if (viewMode === 'spread') {
       console.log('📖 Setting fitMode to width for spread view')
       setFitMode('width') // 見開きモード時は幅に合わせるモードが適切
     } else if (viewMode === 'single') {
       console.log('📄 Setting fitMode to fit for single view')
       setFitMode('fit') // 単ページモード時はウィンドウに合わせるモードが適切
     }
-  }, [viewMode])
+  }, [viewMode, isCoverPage])
 
   // Apply fit mode
   useEffect(() => {
