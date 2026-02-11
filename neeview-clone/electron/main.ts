@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { readdirSync, statSync } from 'fs'
 import { extname } from 'path'
+import type { MediaFileInfo, ScanOptions } from '../src/types/electron'
 
 function createWindow(): void {
   // Create the browser window.
@@ -23,7 +24,6 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
-    console.log('Electron app window is ready and shown')
   })
 
   // Remove CSP headers for development
@@ -184,20 +184,6 @@ function setupIpcHandlers() {
   })
 }
 
-interface MediaFileInfo {
-  path: string
-  name: string
-  type: 'image' | 'video' | 'unknown'
-  size: number
-  modified: number
-}
-
-interface ScanOptions {
-  includeSubfolders?: boolean
-  sortBy?: 'name' | 'date' | 'size' | 'type'
-  sortOrder?: 'asc' | 'desc'
-  fileTypes?: string[]
-}
 
 async function scanFolderForMediaFiles(folderPath: string, options: ScanOptions = {}): Promise<MediaFileInfo[]> {
   const {

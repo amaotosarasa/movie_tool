@@ -71,7 +71,7 @@ function App() {
     }
   }, [viewMode, bindingDirection, currentIndex, files, currentFile])
 
-  const handleFileSelect = (file: MediaFile, index: number) => {
+  const handleFileSelect = (_file: MediaFile, index: number) => {
     const alignedIndex = getSpreadAlignedIndex(index)
     setCurrentFile(files[alignedIndex])
     setCurrentIndex(alignedIndex)

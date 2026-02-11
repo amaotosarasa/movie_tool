@@ -33,24 +33,12 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
   const [rotation, setRotation] = useState(0)
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const imageRef = useRef<HTMLImageElement>(null)
 
   const isSpread = viewMode === 'spread' && spreadPages.left && spreadPages.right
 
   // 表紙判定: spreadPages.rightがnullの場合は表紙または単独表示
   const isCoverPage = !spreadPages.right
 
-  // 見開きモード時の実際の合計サイズを取得
-  const getSpreadDimensions = useCallback(() => {
-    if (!isSpread || !spreadImageSizes.left || !spreadImageSizes.right) {
-      return null
-    }
-
-    const totalWidth = spreadImageSizes.left.width + spreadImageSizes.right.width
-    const maxHeight = Math.max(spreadImageSizes.left.height, spreadImageSizes.right.height)
-
-    return { width: totalWidth, height: maxHeight }
-  }, [isSpread, spreadImageSizes])
 
   // 見開きモード時の実際の表示サイズを計算（CSS制約を考慮）
   const getActualSpreadDisplaySize = useCallback(() => {
@@ -125,18 +113,6 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
       const scaleX = effectiveWidth / actualDisplaySize.width
       const scaleY = effectiveHeight / actualDisplaySize.height
 
-      // デバッグ用ログ
-      console.log('Spread scale calculation:', {
-        containerWidth,
-        containerHeight,
-        actualDisplaySize,
-        effectiveWidth,
-        effectiveHeight,
-        scaleX,
-        scaleY,
-        resultScale: Math.min(scaleX, scaleY, 1),
-        fitMode
-      })
 
       switch (fitMode) {
         case 'fit':
@@ -218,17 +194,13 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
 
   // Handle view mode changes
   useEffect(() => {
-    console.log('🔄 viewMode changed:', viewMode, 'isCoverPage:', isCoverPage)
     // viewMode が変更された場合、適切なフィットモードに設定
     if (isCoverPage) {
       // 表紙または単独表示の場合は常に'fit'モード
-      console.log('📕 Setting fitMode to fit for cover page')
       setFitMode('fit')
     } else if (viewMode === 'spread') {
-      console.log('📖 Setting fitMode to width for spread view')
       setFitMode('width') // 見開きモード時は幅に合わせるモードが適切
     } else if (viewMode === 'single') {
-      console.log('📄 Setting fitMode to fit for single view')
       setFitMode('fit') // 単ページモード時はウィンドウに合わせるモードが適切
     }
   }, [viewMode, isCoverPage])
@@ -267,7 +239,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
       imageSize.height,
       newScale,
       rotation,
-      isSpread
+      !!isSpread
     )
     // Position updated from fit mode
     setPosition(centerPos)
@@ -402,8 +374,8 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
   const imageStyle = {
     transform: `translate(${position.x}px, ${position.y}px) scale(${scale}) rotate(${rotation}deg)`,
     cursor: isDragging ? 'grabbing' : 'grab',
-    transformOrigin: 'top left', // 修正：左上原点で計算結果を正確に反映
-    position: 'absolute', // 絶対配置でflexboxの影響を排除
+    transformOrigin: 'top left' as const,
+    position: 'absolute' as const,
     top: 0,
     left: 0
   }
@@ -542,13 +514,12 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
         ) : (
           // 単ページ表示
           <img
-            ref={imageRef}
             src={getImageSrc(file)}
             alt={file.name}
             className="select-none"
             style={{
               ...imageStyle,
-              maxWidth: 'none', // Tailwindのmax-w-noneをインラインで置換
+              maxWidth: 'none',
               display: 'block'
             }}
             onLoad={handleImageLoad}

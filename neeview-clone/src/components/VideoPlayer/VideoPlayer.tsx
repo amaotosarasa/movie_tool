@@ -12,13 +12,12 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [showControls, setShowControls] = useState(true)
   const [videoSrc, setVideoSrc] = useState<string>('')
   const [error, setError] = useState<string>('')
 
-  let hideControlsTimeout: NodeJS.Timeout | null = null
+  const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Reset when file changes
   useEffect(() => {
@@ -34,7 +33,6 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
         const normalizedPath = filePath.replace(/\\/g, '/')
         // Use custom safe-file protocol for local files in Electron
         const url = normalizedPath.startsWith('safe-file:') ? normalizedPath : `safe-file:${normalizedPath}`
-        console.log('Video URL:', url)
         return url
       } catch (err) {
         console.error('Error converting file path to URL:', err)
@@ -67,11 +65,11 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
   // Auto-hide controls
   useEffect(() => {
     const resetHideTimeout = () => {
-      if (hideControlsTimeout) {
-        clearTimeout(hideControlsTimeout)
+      if (hideControlsTimeoutRef.current) {
+        clearTimeout(hideControlsTimeoutRef.current)
       }
       setShowControls(true)
-      hideControlsTimeout = setTimeout(() => {
+      hideControlsTimeoutRef.current = setTimeout(() => {
         if (isPlaying) {
           setShowControls(false)
         }
@@ -81,19 +79,14 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
     resetHideTimeout()
 
     return () => {
-      if (hideControlsTimeout) {
-        clearTimeout(hideControlsTimeout)
+      if (hideControlsTimeoutRef.current) {
+        clearTimeout(hideControlsTimeoutRef.current)
       }
     }
   }, [isPlaying])
 
   const togglePlay = async () => {
     const video = videoRef.current
-    console.log('=== togglePlay called ===')
-    console.log('Video element:', video)
-    console.log('Current playing state:', isPlaying)
-    console.log('Video src:', videoSrc)
-    console.log('Video readyState:', video?.readyState)
 
     if (!video) {
       console.error('Video element not found')
@@ -102,17 +95,15 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
 
     try {
       if (isPlaying) {
-        console.log('Pausing video...')
         video.pause()
         setIsPlaying(false)
       } else {
-        console.log('Playing video...')
         await video.play()
         setIsPlaying(true)
       }
     } catch (error) {
       console.error('Error toggling video playback:', error)
-      setError(`再生エラー: ${error.message}`)
+      setError(`再生エラー: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -228,11 +219,9 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
         controls={false}
         preload="metadata"
         onPlay={() => {
-          console.log('Video play event triggered')
           setIsPlaying(true)
         }}
         onPause={() => {
-          console.log('Video pause event triggered')
           setIsPlaying(false)
         }}
         onError={(e) => {
@@ -240,20 +229,7 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
           setError(`動画の読み込みに失敗しました: ${file.name}`)
         }}
         onLoadedData={() => {
-          console.log('Video loaded successfully:', file.path)
           setError('')
-        }}
-        onCanPlay={() => {
-          console.log('Video can start playing:', file.path)
-        }}
-        onLoadStart={() => {
-          console.log('Video load started')
-        }}
-        onWaiting={() => {
-          console.log('Video waiting for data')
-        }}
-        onCanPlayThrough={() => {
-          console.log('Video can play through')
         }}
       />
 
