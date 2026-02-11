@@ -49,6 +49,45 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
     return { width: totalWidth, height: maxHeight }
   }, [isSpread, spreadImageSizes])
 
+  // 見開きモード時の実際の表示サイズを計算（CSS制約を考慮）
+  const getActualSpreadDisplaySize = useCallback(() => {
+    if (!isSpread || !spreadImageSizes.left || !spreadImageSizes.right || !containerRef.current) {
+      return null
+    }
+
+    const containerWidth = containerRef.current.clientWidth
+    const containerHeight = containerRef.current.clientHeight
+    const leftImg = spreadImageSizes.left
+    const rightImg = spreadImageSizes.right
+
+    // 各画像を自然な縦横比でコンテナに収めた時のサイズを計算
+    const leftAspectRatio = leftImg.width / leftImg.height
+    const rightAspectRatio = rightImg.width / rightImg.height
+
+    // 高さ基準でのサイズ計算
+    let leftDisplayWidth = containerHeight * leftAspectRatio
+    let leftDisplayHeight = containerHeight
+    let rightDisplayWidth = containerHeight * rightAspectRatio
+    let rightDisplayHeight = containerHeight
+
+    // 合計幅がコンテナ幅を超える場合は、幅基準でスケーリング
+    const totalNaturalWidth = leftDisplayWidth + rightDisplayWidth
+    if (totalNaturalWidth > containerWidth) {
+      const scaleRatio = containerWidth / totalNaturalWidth
+      leftDisplayWidth *= scaleRatio
+      leftDisplayHeight *= scaleRatio
+      rightDisplayWidth *= scaleRatio
+      rightDisplayHeight *= scaleRatio
+    }
+
+    return {
+      width: leftDisplayWidth + rightDisplayWidth,
+      height: Math.max(leftDisplayHeight, rightDisplayHeight),
+      leftWidth: leftDisplayWidth,
+      rightWidth: rightDisplayWidth
+    }
+  }, [isSpread, spreadImageSizes])
+
   // Reset view when file changes
   useEffect(() => {
     // File changed, resetting view
@@ -71,13 +110,30 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
     const containerHeight = container.clientHeight
     // Container dimensions retrieved
 
-    // 見開きモードの場合は見開きサイズを使用
+    // 見開きモードの場合は実際の表示サイズを使用
     if (isSpread) {
-      const spreadDims = getSpreadDimensions()
-      if (!spreadDims) return 1
+      const actualDisplaySize = getActualSpreadDisplaySize()
+      if (!actualDisplaySize) return 1
 
-      const scaleX = containerWidth / spreadDims.width
-      const scaleY = containerHeight / spreadDims.height
+      // マージンを考慮してコンテナサイズの95%に収める
+      const effectiveWidth = containerWidth * 0.95
+      const effectiveHeight = containerHeight * 0.95
+
+      const scaleX = effectiveWidth / actualDisplaySize.width
+      const scaleY = effectiveHeight / actualDisplaySize.height
+
+      // デバッグ用ログ
+      console.log('Spread scale calculation:', {
+        containerWidth,
+        containerHeight,
+        actualDisplaySize,
+        effectiveWidth,
+        effectiveHeight,
+        scaleX,
+        scaleY,
+        resultScale: Math.min(scaleX, scaleY, 1),
+        fitMode
+      })
 
       switch (fitMode) {
         case 'fit':
@@ -107,7 +163,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
           return 1
       }
     }
-  }, [imageSize, fitMode, isSpread, getSpreadDimensions])
+  }, [imageSize, fitMode, isSpread, getActualSpreadDisplaySize])
 
   // Helper function to get rotated dimensions
   function getRotatedDimensions(width: number, height: number, rotation: number): { width: number; height: number } {
@@ -133,13 +189,13 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
     let targetWidth = imageWidth
     let targetHeight = imageHeight
 
-    // 見開きモードの場合は実際の見開きサイズを使用
+    // 見開きモードの場合は実際の表示サイズを使用
     if (useSpreadDims) {
-      const spreadDims = getSpreadDimensions()
-      // Using spread dimensions
-      if (spreadDims) {
-        targetWidth = spreadDims.width
-        targetHeight = spreadDims.height
+      const actualDisplaySize = getActualSpreadDisplaySize()
+      // Using actual spread display size
+      if (actualDisplaySize) {
+        targetWidth = actualDisplaySize.width
+        targetHeight = actualDisplaySize.height
       }
     }
 
@@ -155,7 +211,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
     const y = (containerHeight - displayHeight) / 2
 
     return { x, y }
-  }, [getSpreadDimensions])
+  }, [getActualSpreadDisplaySize])
 
   // Apply fit mode
   useEffect(() => {
@@ -427,13 +483,20 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
               position: 'absolute', // 絶対配置でflexboxの影響を排除
               top: 0,
               left: 0,
-              display: 'flex' // 見開き内部の画像配置用
+              display: 'flex', // 見開き内部の画像配置用
+              alignItems: 'flex-start', // 画像を上端揃えで配置
+              justifyContent: 'flex-start' // 画像を左端から配置
             }}
           >
             <img
               src={getImageSrc(spreadPages.left!)}
               alt={spreadPages.left!.name}
-              className="max-w-none select-none h-full object-contain"
+              className="max-w-none select-none block"
+              style={{
+                maxHeight: '100vh', // 最大高さをビューポート高さに制限
+                width: 'auto', // 縦横比を保持して幅を自動計算
+                height: 'auto' // 縦横比を保持
+              }}
               onLoad={handleImageLoad}
               onError={(e) => {
                 console.error('Failed to load image:', spreadPages.left!.path, e)
@@ -443,7 +506,12 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
             <img
               src={getImageSrc(spreadPages.right!)}
               alt={spreadPages.right!.name}
-              className="max-w-none select-none h-full object-contain"
+              className="max-w-none select-none block"
+              style={{
+                maxHeight: '100vh', // 最大高さをビューポート高さに制限
+                width: 'auto', // 縦横比を保持して幅を自動計算
+                height: 'auto' // 縦横比を保持
+              }}
               onLoad={handleImageLoad}
               onError={(e) => {
                 console.error('Failed to load image:', spreadPages.right!.path, e)
