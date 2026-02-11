@@ -35,7 +35,6 @@ const api = {
 try {
   contextBridge.exposeInMainWorld('electron', electronAPI)
   contextBridge.exposeInMainWorld('api', api)
-  console.log('APIs exposed successfully via contextBridge', { api: typeof api, openFile: typeof api.openFile })
 } catch (error) {
   console.error('Failed to expose APIs:', error)
 
@@ -44,5 +43,4 @@ try {
   window.electron = electronAPI
   // @ts-ignore
   window.api = api
-  console.log('APIs exposed via window global as fallback')
 }

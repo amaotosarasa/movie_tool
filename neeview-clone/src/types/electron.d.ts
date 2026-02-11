@@ -1,17 +1,6 @@
 export type ViewMode = 'single' | 'spread'
 export type BindingDirection = 'right-to-left' | 'left-to-right'
 
-export interface IElectronAPI {
-  ipcRenderer: {
-    sendMessage: (channel: string, ...args: unknown[]) => void
-    on: (
-      channel: string,
-      func: (...args: unknown[]) => void
-    ) => (() => void) | undefined
-    once: (channel: string, func: (...args: unknown[]) => void) => void
-    invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
-  }
-}
 
 export interface MediaFileInfo {
   path: string
