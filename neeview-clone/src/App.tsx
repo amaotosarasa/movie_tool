@@ -385,6 +385,7 @@ function App() {
     if (viewMode === 'spread' && currentFile.type === 'image' && (spreadPages.left || spreadPages.right)) {
       return (
         <ImageViewer
+          key={`${currentFile.path}-${viewMode}-spread`}
           file={currentFile}
           viewMode={viewMode}
           spreadPages={spreadPages}
@@ -396,8 +397,9 @@ function App() {
       case 'image':
         return (
           <ImageViewer
+            key={`${currentFile.path}-${viewMode}`}
             file={currentFile}
-            viewMode="single"
+            viewMode={viewMode}
             spreadPages={{ left: currentFile, right: null }}
           />
         )
