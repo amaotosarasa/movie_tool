@@ -51,6 +51,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
 
   // Reset view when file changes
   useEffect(() => {
+    // File changed, resetting view
     setScale(1)
     setPosition({ x: 0, y: 0 })
     setRotation(0)
@@ -60,11 +61,15 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
 
   // Calculate fit scale based on container and image size
   const calculateFitScale = useCallback(() => {
-    if (!containerRef.current) return 1
+    if (!containerRef.current) {
+      // containerRef not available
+      return 1
+    }
 
     const container = containerRef.current
     const containerWidth = container.clientWidth
     const containerHeight = container.clientHeight
+    // Container dimensions retrieved
 
     // 見開きモードの場合は見開きサイズを使用
     if (isSpread) {
@@ -123,12 +128,15 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
     rotation?: number,
     useSpreadDims?: boolean
   ): { x: number; y: number } => {
+    // centerImage called - calculating center position
+
     let targetWidth = imageWidth
     let targetHeight = imageHeight
 
     // 見開きモードの場合は実際の見開きサイズを使用
     if (useSpreadDims) {
       const spreadDims = getSpreadDimensions()
+      // Using spread dimensions
       if (spreadDims) {
         targetWidth = spreadDims.width
         targetHeight = spreadDims.height
@@ -151,19 +159,31 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
 
   // Apply fit mode
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current) {
+      // Container not available for fit mode
+      return
+    }
+
+    // Fit mode effect triggered
 
     // 見開きモードの場合は両方の画像がロードされるまで待つ
-    if (isSpread && (!spreadImageSizes.left || !spreadImageSizes.right)) return
+    if (isSpread && (!spreadImageSizes.left || !spreadImageSizes.right)) {
+      // Waiting for spread images to load
+      return
+    }
 
     // 単ページモードの場合は通常の画像サイズが必要
-    if (!isSpread && (!imageSize.width || !imageSize.height)) return
+    if (!isSpread && (!imageSize.width || !imageSize.height)) {
+      // Waiting for single image to load
+      return
+    }
 
     const newScale = calculateFitScale()
     setScale(newScale)
 
     // Center the image with the new scale
     const container = containerRef.current
+    // Centering image with fit mode
     const centerPos = centerImage(
       container.clientWidth,
       container.clientHeight,
@@ -173,6 +193,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
       rotation,
       isSpread
     )
+    // Position updated from fit mode
     setPosition(centerPos)
   }, [calculateFitScale, imageSize, spreadImageSizes, rotation, isSpread, centerImage])
 
@@ -206,6 +227,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
         setScale(newScale)
 
         const container = containerRef.current
+        // Centering spread images on load
         const centerPos = centerImage(
           container.clientWidth,
           container.clientHeight,
@@ -215,6 +237,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
           rotation,
           true // useSpreadDims
         )
+        // Position updated from spread load
         setPosition(centerPos)
       }
     } else {
@@ -227,6 +250,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
         setScale(newScale)
 
         const container = containerRef.current
+        // Centering single image on load
         const centerPos = centerImage(
           container.clientWidth,
           container.clientHeight,
@@ -236,6 +260,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
           rotation,
           false // useSpreadDims
         )
+        // Position updated from single image load
         setPosition(centerPos)
       }
     }
@@ -300,8 +325,14 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
 
   const imageStyle = {
     transform: `translate(${position.x}px, ${position.y}px) scale(${scale}) rotate(${rotation}deg)`,
-    cursor: isDragging ? 'grabbing' : 'grab'
+    cursor: isDragging ? 'grabbing' : 'grab',
+    transformOrigin: 'top left', // 修正：左上原点で計算結果を正確に反映
+    position: 'absolute', // 絶対配置でflexboxの影響を排除
+    top: 0,
+    left: 0
   }
+
+  // Image style calculated
 
   // 表示するファイル名（見開き時は両ページ）
   const displayName = isSpread
@@ -374,20 +405,29 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
       {/* Image Container */}
       <div
         ref={containerRef}
-        className="w-full h-full flex items-center justify-center overflow-hidden cursor-move"
+        className="w-full h-full overflow-hidden cursor-move"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        style={{
+          /* flexbox自動中央配置を無効化してJavaScript制御に委ねる */
+          display: 'block',
+          position: 'relative'
+        }}
       >
         {isSpread ? (
           // 見開き表示
           <div
-            className="flex items-center justify-center h-full"
             style={{
               transform: `translate(${position.x}px, ${position.y}px) scale(${scale}) rotate(${rotation}deg)`,
-              cursor: isDragging ? 'grabbing' : 'grab'
+              cursor: isDragging ? 'grabbing' : 'grab',
+              transformOrigin: 'top left', // 修正：左上原点で計算結果を正確に反映
+              position: 'absolute', // 絶対配置でflexboxの影響を排除
+              top: 0,
+              left: 0,
+              display: 'flex' // 見開き内部の画像配置用
             }}
           >
             <img
@@ -417,8 +457,12 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
             ref={imageRef}
             src={getImageSrc(file)}
             alt={file.name}
-            className="max-w-none select-none"
-            style={imageStyle}
+            className="select-none"
+            style={{
+              ...imageStyle,
+              maxWidth: 'none', // Tailwindのmax-w-noneをインラインで置換
+              display: 'block'
+            }}
             onLoad={handleImageLoad}
             onError={(e) => {
               console.error('Failed to load image:', file.path, e)
