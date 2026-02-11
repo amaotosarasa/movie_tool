@@ -26,6 +26,10 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [fitMode, setFitMode] = useState<'fit' | 'width' | 'actual'>('fit')
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
+  const [spreadImageSizes, setSpreadImageSizes] = useState<{
+    left: { width: number; height: number } | null
+    right: { width: number; height: number } | null
+  }>({ left: null, right: null })
   const [rotation, setRotation] = useState(0)
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -33,52 +37,209 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
 
   const isSpread = viewMode === 'spread' && spreadPages.left && spreadPages.right
 
+  // 見開きモード時の実際の合計サイズを取得
+  const getSpreadDimensions = useCallback(() => {
+    if (!isSpread || !spreadImageSizes.left || !spreadImageSizes.right) {
+      return null
+    }
+
+    const totalWidth = spreadImageSizes.left.width + spreadImageSizes.right.width
+    const maxHeight = Math.max(spreadImageSizes.left.height, spreadImageSizes.right.height)
+
+    return { width: totalWidth, height: maxHeight }
+  }, [isSpread, spreadImageSizes])
+
   // Reset view when file changes
   useEffect(() => {
     setScale(1)
     setPosition({ x: 0, y: 0 })
     setRotation(0)
     setFitMode('fit')
+    setSpreadImageSizes({ left: null, right: null })
   }, [file.path])
 
   // Calculate fit scale based on container and image size
   const calculateFitScale = useCallback(() => {
-    if (!containerRef.current || !imageSize.width || !imageSize.height) return 1
+    if (!containerRef.current) return 1
 
     const container = containerRef.current
     const containerWidth = container.clientWidth
     const containerHeight = container.clientHeight
 
-    // 見開き時は半分の幅で計算
-    const availableWidth = isSpread ? containerWidth / 2 : containerWidth
+    // 見開きモードの場合は見開きサイズを使用
+    if (isSpread) {
+      const spreadDims = getSpreadDimensions()
+      if (!spreadDims) return 1
 
-    const scaleX = availableWidth / imageSize.width
-    const scaleY = containerHeight / imageSize.height
+      const scaleX = containerWidth / spreadDims.width
+      const scaleY = containerHeight / spreadDims.height
 
-    switch (fitMode) {
-      case 'fit':
-        return Math.min(scaleX, scaleY, 1)
-      case 'width':
-        return scaleX
-      case 'actual':
-        return 1
-      default:
-        return 1
+      switch (fitMode) {
+        case 'fit':
+          return Math.min(scaleX, scaleY, 1)
+        case 'width':
+          return scaleX
+        case 'actual':
+          return 1
+        default:
+          return 1
+      }
+    } else {
+      // 単ページモード
+      if (!imageSize.width || !imageSize.height) return 1
+
+      const scaleX = containerWidth / imageSize.width
+      const scaleY = containerHeight / imageSize.height
+
+      switch (fitMode) {
+        case 'fit':
+          return Math.min(scaleX, scaleY, 1)
+        case 'width':
+          return scaleX
+        case 'actual':
+          return 1
+        default:
+          return 1
+      }
     }
-  }, [imageSize, fitMode, isSpread])
+  }, [imageSize, fitMode, isSpread, getSpreadDimensions])
+
+  // Helper function to get rotated dimensions
+  function getRotatedDimensions(width: number, height: number, rotation: number): { width: number; height: number } {
+    const normalizedRotation = Math.abs(rotation) % 180
+    if (normalizedRotation === 90) {
+      return { width: height, height: width }
+    }
+    return { width, height }
+  }
+
+  // Helper function to center image
+  const centerImage = useCallback((
+    containerWidth: number,
+    containerHeight: number,
+    imageWidth: number,
+    imageHeight: number,
+    scale: number,
+    rotation?: number,
+    useSpreadDims?: boolean
+  ): { x: number; y: number } => {
+    let targetWidth = imageWidth
+    let targetHeight = imageHeight
+
+    // 見開きモードの場合は実際の見開きサイズを使用
+    if (useSpreadDims) {
+      const spreadDims = getSpreadDimensions()
+      if (spreadDims) {
+        targetWidth = spreadDims.width
+        targetHeight = spreadDims.height
+      }
+    }
+
+    // Get actual image dimensions considering rotation
+    const rotatedDims = getRotatedDimensions(targetWidth, targetHeight, rotation || 0)
+
+    // Calculate display dimensions with scale
+    const displayWidth = rotatedDims.width * scale
+    const displayHeight = rotatedDims.height * scale
+
+    // Calculate center position
+    const x = (containerWidth - displayWidth) / 2
+    const y = (containerHeight - displayHeight) / 2
+
+    return { x, y }
+  }, [getSpreadDimensions])
 
   // Apply fit mode
   useEffect(() => {
+    if (!containerRef.current) return
+
+    // 見開きモードの場合は両方の画像がロードされるまで待つ
+    if (isSpread && (!spreadImageSizes.left || !spreadImageSizes.right)) return
+
+    // 単ページモードの場合は通常の画像サイズが必要
+    if (!isSpread && (!imageSize.width || !imageSize.height)) return
+
     const newScale = calculateFitScale()
     setScale(newScale)
-    setPosition({ x: 0, y: 0 })
-  }, [calculateFitScale])
+
+    // Center the image with the new scale
+    const container = containerRef.current
+    const centerPos = centerImage(
+      container.clientWidth,
+      container.clientHeight,
+      imageSize.width,
+      imageSize.height,
+      newScale,
+      rotation,
+      isSpread
+    )
+    setPosition(centerPos)
+  }, [calculateFitScale, imageSize, spreadImageSizes, rotation, isSpread, centerImage])
 
   // Handle image load
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
-    setImageSize({ width: img.naturalWidth, height: img.naturalHeight })
-  }
+    const newImageSize = { width: img.naturalWidth, height: img.naturalHeight }
+
+    if (isSpread && spreadPages.left && spreadPages.right) {
+      // 見開きモードの場合：どちらの画像がロードされたかを判定
+      const imgSrc = img.src
+      const leftSrc = getImageSrc(spreadPages.left)
+      const rightSrc = getImageSrc(spreadPages.right)
+
+      if (imgSrc === leftSrc) {
+        // 左側の画像
+        setSpreadImageSizes(prev => ({ ...prev, left: newImageSize }))
+      } else if (imgSrc === rightSrc) {
+        // 右側の画像
+        setSpreadImageSizes(prev => ({ ...prev, right: newImageSize }))
+      }
+
+      // 両方の画像がロード完了した場合のみ中央配置を実行
+      const updatedSizes = {
+        left: imgSrc === leftSrc ? newImageSize : spreadImageSizes.left,
+        right: imgSrc === rightSrc ? newImageSize : spreadImageSizes.right
+      }
+
+      if (containerRef.current && updatedSizes.left && updatedSizes.right) {
+        const newScale = calculateFitScale()
+        setScale(newScale)
+
+        const container = containerRef.current
+        const centerPos = centerImage(
+          container.clientWidth,
+          container.clientHeight,
+          0, // 見開きモードでは使用されない
+          0, // 見開きモードでは使用されない
+          newScale,
+          rotation,
+          true // useSpreadDims
+        )
+        setPosition(centerPos)
+      }
+    } else {
+      // 単ページモード
+      setImageSize(newImageSize)
+
+      // Auto-center the image after loading
+      if (containerRef.current && newImageSize.width > 0 && newImageSize.height > 0) {
+        const newScale = calculateFitScale()
+        setScale(newScale)
+
+        const container = containerRef.current
+        const centerPos = centerImage(
+          container.clientWidth,
+          container.clientHeight,
+          newImageSize.width,
+          newImageSize.height,
+          newScale,
+          rotation,
+          false // useSpreadDims
+        )
+        setPosition(centerPos)
+      }
+    }
+  }, [calculateFitScale, rotation, isSpread, centerImage, spreadPages, spreadImageSizes])
 
   // Handle mouse wheel zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -243,6 +404,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
               src={getImageSrc(spreadPages.right!)}
               alt={spreadPages.right!.name}
               className="max-w-none select-none h-full object-contain"
+              onLoad={handleImageLoad}
               onError={(e) => {
                 console.error('Failed to load image:', spreadPages.right!.path, e)
               }}
@@ -269,8 +431,16 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
       {/* Image Info */}
       <div className="absolute bottom-4 left-4 z-10 bg-black bg-opacity-50 rounded-lg p-2 text-xs text-white">
         <div>{displayName}</div>
-        {imageSize.width > 0 && imageSize.height > 0 && (
-          <div>{imageSize.width} × {imageSize.height}</div>
+        {isSpread ? (
+          spreadImageSizes.left && spreadImageSizes.right && (
+            <div>
+              {spreadImageSizes.left.width + spreadImageSizes.right.width} × {Math.max(spreadImageSizes.left.height, spreadImageSizes.right.height)}
+            </div>
+          )
+        ) : (
+          imageSize.width > 0 && imageSize.height > 0 && (
+            <div>{imageSize.width} × {imageSize.height}</div>
+          )
         )}
       </div>
     </div>
