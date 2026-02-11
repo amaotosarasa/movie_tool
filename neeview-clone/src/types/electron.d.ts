@@ -1,3 +1,6 @@
+export type ViewMode = 'single' | 'spread'
+export type BindingDirection = 'right-to-left' | 'left-to-right'
+
 export interface IElectronAPI {
   ipcRenderer: {
     sendMessage: (channel: string, ...args: unknown[]) => void

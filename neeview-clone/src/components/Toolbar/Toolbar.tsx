@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { MediaFile } from '../../App'
+import { ViewMode, BindingDirection } from '../../types/electron'
 
 interface ToolbarProps {
   onOpenFile: () => void
@@ -18,6 +19,10 @@ interface ToolbarProps {
   sortOrder: 'asc' | 'desc'
   includeSubfolders: boolean
   fileCount: number
+  viewMode: ViewMode
+  bindingDirection: BindingDirection
+  onViewModeChange: (mode: ViewMode) => void
+  onBindingDirectionChange: (direction: BindingDirection) => void
 }
 
 export function Toolbar({
@@ -36,7 +41,11 @@ export function Toolbar({
   sortBy,
   sortOrder,
   includeSubfolders,
-  fileCount
+  fileCount,
+  viewMode,
+  bindingDirection,
+  onViewModeChange,
+  onBindingDirectionChange
 }: ToolbarProps) {
   const [showSortMenu, setShowSortMenu] = useState(false)
   const getSortIcon = (type: 'name' | 'date' | 'size' | 'type') => {
@@ -151,6 +160,26 @@ export function Toolbar({
         >
           📋
         </button>
+
+        <div className="w-px h-6 bg-gray-600" />
+
+        <button
+          onClick={() => onViewModeChange(viewMode === 'single' ? 'spread' : 'single')}
+          className={`px-2 py-1 rounded text-white text-sm transition-colors ${viewMode === 'spread' ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-gray-700'}`}
+          title={`${viewMode === 'single' ? '見開き' : '単ページ'}表示に切替 (S)`}
+        >
+          {viewMode === 'single' ? '📄' : '📖'}
+        </button>
+
+        {viewMode === 'spread' && (
+          <button
+            onClick={() => onBindingDirectionChange(bindingDirection === 'right-to-left' ? 'left-to-right' : 'right-to-left')}
+            className="px-2 py-1 hover:bg-gray-700 rounded text-white text-sm transition-colors"
+            title={`${bindingDirection === 'right-to-left' ? '左綴じ' : '右綴じ'}に切替 (R)`}
+          >
+            {bindingDirection === 'right-to-left' ? '右綴じ →' : '← 左綴じ'}
+          </button>
+        )}
 
         {isLoading && (
           <div className="flex items-center space-x-1 text-yellow-400">
