@@ -28,6 +28,11 @@ export interface IAPI {
   maximizeWindow: () => void
   closeWindow: () => void
 
+  // Fullscreen controls
+  toggleFullscreen: () => Promise<boolean>
+  exitFullscreen: () => Promise<boolean>
+  getFullscreenState: () => Promise<boolean>
+
   // System info
   platform: NodeJS.Platform
   versions: {

@@ -23,6 +23,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('single')
   const [bindingDirection, setBindingDirection] = useState<BindingDirection>('right-to-left')
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false)
 
   // 見開きモードでのペアインデックスの先頭に揃える
   const getSpreadAlignedIndex = (index: number): number => {
@@ -283,6 +284,46 @@ function App() {
     setIncludeSubfolders(!includeSubfolders)
   }
 
+  const handleToggleFullscreen = async () => {
+    if (!window.api?.toggleFullscreen) return
+
+    try {
+      const newState = await window.api.toggleFullscreen()
+      setIsFullscreen(newState)
+    } catch (error) {
+      console.error('Failed to toggle fullscreen:', error)
+      setError('フルスクリーンの切り替えに失敗しました。')
+    }
+  }
+
+  const handleExitFullscreen = async () => {
+    if (!window.api?.exitFullscreen) return
+
+    try {
+      const newState = await window.api.exitFullscreen()
+      setIsFullscreen(newState)
+    } catch (error) {
+      console.error('Failed to exit fullscreen:', error)
+      setError('フルスクリーンの終了に失敗しました。')
+    }
+  }
+
+  // Check initial fullscreen state
+  useEffect(() => {
+    const checkFullscreenState = async () => {
+      if (!window.api?.getFullscreenState) return
+
+      try {
+        const state = await window.api.getFullscreenState()
+        setIsFullscreen(state)
+      } catch (error) {
+        console.error('Failed to get fullscreen state:', error)
+      }
+    }
+
+    checkFullscreenState()
+  }, [])
+
   // Auto-rescan when sort options change
   useEffect(() => {
     if (currentFolder) {
@@ -304,7 +345,13 @@ function App() {
           break
         case 'F11':
           e.preventDefault()
-          // Toggle fullscreen (would need additional IPC)
+          handleToggleFullscreen()
+          break
+        case 'Escape':
+          if (isFullscreen) {
+            e.preventDefault()
+            handleExitFullscreen()
+          }
           break
         case 'Tab':
           e.preventDefault()
@@ -342,7 +389,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentIndex, files, viewMode, bindingDirection])
+  }, [currentIndex, files, viewMode, bindingDirection, isFullscreen])
 
   const renderViewer = () => {
     if (error) {
@@ -420,8 +467,9 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100">
-      <WindowControls />
-      <Toolbar
+      {!isFullscreen && <WindowControls />}
+      {!isFullscreen && (
+        <Toolbar
         onOpenFile={handleOpenFile}
         onOpenFolder={handleOpenFolder}
         onPrevious={handlePrevious}
@@ -443,6 +491,7 @@ function App() {
         onViewModeChange={setViewMode}
         onBindingDirectionChange={setBindingDirection}
       />
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {sidebarVisible && (
