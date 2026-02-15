@@ -182,6 +182,31 @@ function setupIpcHandlers() {
       throw error
     }
   })
+
+  // Fullscreen handlers
+  ipcMain.handle('window:toggle-fullscreen', () => {
+    const window = BrowserWindow.getFocusedWindow()
+    if (window) {
+      const isFullscreen = window.isFullScreen()
+      window.setFullScreen(!isFullscreen)
+      return !isFullscreen
+    }
+    return false
+  })
+
+  ipcMain.handle('window:exit-fullscreen', () => {
+    const window = BrowserWindow.getFocusedWindow()
+    if (window && window.isFullScreen()) {
+      window.setFullScreen(false)
+      return false
+    }
+    return window ? window.isFullScreen() : false
+  })
+
+  ipcMain.handle('window:get-fullscreen-state', () => {
+    const window = BrowserWindow.getFocusedWindow()
+    return window ? window.isFullScreen() : false
+  })
 }
 
 

@@ -22,6 +22,11 @@ const api = {
   maximizeWindow: () => ipcRenderer.send('app:maximize'),
   closeWindow: () => ipcRenderer.send('app:close'),
 
+  // Fullscreen controls
+  toggleFullscreen: () => ipcRenderer.invoke('window:toggle-fullscreen'),
+  exitFullscreen: () => ipcRenderer.invoke('window:exit-fullscreen'),
+  getFullscreenState: () => ipcRenderer.invoke('window:get-fullscreen-state'),
+
   // Utility functions
   platform: process.platform,
   versions: {
