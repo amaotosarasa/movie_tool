@@ -46,12 +46,16 @@ export class TempFileManager {
   }
 
   /**
-   * 一時ファイル名の生成
+   * 一時ファイル名の生成（セキュア）
    */
   static generateTempFileName(zipPath: string, internalPath: string): string {
+    // セキュアなランダムバイト生成
+    const randomBytes = crypto.randomBytes(8).toString('hex')
     const timestamp = Date.now().toString()
+
+    // 予測困難なハッシュ生成
     const hash = crypto.createHash('sha256')
-      .update(`${zipPath}::${internalPath}::${timestamp}`)
+      .update(`${zipPath}::${internalPath}::${timestamp}::${randomBytes}`)
       .digest('hex')
       .substring(0, 16)
 
@@ -79,10 +83,19 @@ export class TempFileManager {
       const tempFileName = this.generateTempFileName(zipSource, originalPath)
       const tempFilePath = path.join(this.TEMP_DIR, tempFileName)
 
-      // ファイル書き込み（原子的操作）
+      // ファイル書き込み（原子的操作・セキュアな権限設定）
       const tempFileTmp = tempFilePath + '.tmp'
-      await fs.promises.writeFile(tempFileTmp, buffer)
+
+      // セキュアな権限でファイル作成（ユーザーのみ読み書き可能）
+      await fs.promises.writeFile(tempFileTmp, buffer, {
+        mode: 0o600, // rw-------
+        flag: 'w'
+      })
+
       await fs.promises.rename(tempFileTmp, tempFilePath)
+
+      // 最終ファイルの権限も確実に設定
+      await fs.promises.chmod(tempFilePath, 0o600)
 
       // メタデータ登録
       const tempFileInfo: TempFileInfo = {
@@ -272,14 +285,21 @@ export class TempFileManager {
   }
 
   /**
-   * 一時ディレクトリの確認・作成
+   * 一時ディレクトリの確認・作成（セキュアな権限設定）
    */
   private static async ensureTempDirectory(): Promise<void> {
     try {
       await fs.promises.access(this.TEMP_DIR)
     } catch {
-      await fs.promises.mkdir(this.TEMP_DIR, { recursive: true })
+      // ディレクトリをセキュアな権限で作成（ユーザーのみアクセス可能）
+      await fs.promises.mkdir(this.TEMP_DIR, {
+        recursive: true,
+        mode: 0o700 // rwx------
+      })
     }
+
+    // 既存ディレクトリの権限も確実に設定
+    await fs.promises.chmod(this.TEMP_DIR, 0o700)
   }
 
   /**
