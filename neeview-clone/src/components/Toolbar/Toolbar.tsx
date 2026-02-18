@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { MediaFile } from '../../App'
-import { ViewMode, BindingDirection } from '../../types/electron'
+import { ViewMode, BindingDirection } from '../../types/electron.d'
 
 interface ToolbarProps {
   onOpenFile: () => void

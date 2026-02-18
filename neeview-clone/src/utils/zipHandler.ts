@@ -1,7 +1,7 @@
-import * as AdmZip from 'adm-zip'
+import AdmZip from 'adm-zip'
 import * as path from 'path'
 import * as fs from 'fs'
-import { ZipFileInfo, ZipInfo, ZipScanOptions, ZipError, ZipErrorType } from '../types/electron'
+import { ZipFileInfo, ZipInfo, ZipScanOptions, ZipError, ZipErrorType } from '../types/electron.d'
 import { ZipBombDetector, FileNameHandler, DEFAULT_SECURITY_POLICY } from './zipSecurity'
 
 export class ZipHandler {
@@ -66,10 +66,10 @@ export class ZipHandler {
       }
 
       // サイズチェック
-      if (entry.header.size > this.MAX_FILE_SIZE) {
+      if (entry.header.size > ZipHandler.MAX_FILE_SIZE) {
         throw this.createError(ZipErrorType.FILE_TOO_LARGE, {
           fileSize: entry.header.size,
-          maxSize: this.MAX_FILE_SIZE,
+          maxSize: ZipHandler.MAX_FILE_SIZE,
           fileName: internalPath
         })
       }
@@ -207,11 +207,11 @@ export class ZipHandler {
   private isMediaFile(filename: string): 'image' | 'video' | null {
     const ext = path.extname(filename).toLowerCase().slice(1)
 
-    if (this.SUPPORTED_IMAGE_EXTS.includes(ext)) {
+    if (ZipHandler.SUPPORTED_IMAGE_EXTS.includes(ext)) {
       return 'image'
     }
 
-    if (this.SUPPORTED_VIDEO_EXTS.includes(ext)) {
+    if (ZipHandler.SUPPORTED_VIDEO_EXTS.includes(ext)) {
       return 'video'
     }
 

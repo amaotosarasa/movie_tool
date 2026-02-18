@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { MediaFile } from '../../App'
-import { ViewMode } from '../../types/electron'
+import { ViewMode } from '../../types/electron.d'
 
 interface SpreadPages {
   left: MediaFile | null
@@ -11,15 +11,34 @@ interface ImageViewerProps {
   file: MediaFile
   viewMode: ViewMode
   spreadPages: SpreadPages
+  generateFileUrl?: (file: MediaFile) => string
 }
 
-function getImageSrc(file: MediaFile): string {
-  return file.path.startsWith('safe-file:')
-    ? file.path
-    : `safe-file:${file.path.replace(/\\/g, '/')}`
+function getImageSrc(file: MediaFile, generateFileUrl?: (file: MediaFile) => string): string {
+  console.log('getImageSrc called for image file:', file.name, file.path)
+
+  try {
+    // ZIPファイル内の画像の場合は、generateFileUrl関数を使用
+    if (file.isZipContent && generateFileUrl) {
+      console.log('Using ZIP file URL generation for image')
+      const url = generateFileUrl(file)
+      console.log('Generated ZIP URL for image:', url)
+      return url
+    }
+
+    // 通常の画像ファイルの場合は、HTML5 img要素互換性のためfile://プロトコルを直接使用
+    console.log('Using direct file:// protocol for image compatibility')
+    const filePath = file.path.replace(/\\/g, '/')
+    const fileUrl = `file:///${filePath}`
+    console.log('Generated file:// URL for image:', fileUrl)
+    return fileUrl
+  } catch (err) {
+    console.error('Error converting image path to URL:', err)
+    return file.path
+  }
 }
 
-export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
+export function ImageViewer({ file, viewMode, spreadPages, generateFileUrl }: ImageViewerProps) {
   const [scale, setScale] = useState(1)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -253,8 +272,8 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
     if (isSpread && spreadPages.left && spreadPages.right) {
       // 見開きモードの場合：どちらの画像がロードされたかを判定
       const imgSrc = img.src
-      const leftSrc = getImageSrc(spreadPages.left)
-      const rightSrc = getImageSrc(spreadPages.right)
+      const leftSrc = getImageSrc(spreadPages.left, generateFileUrl)
+      const rightSrc = getImageSrc(spreadPages.right, generateFileUrl)
 
       if (imgSrc === leftSrc) {
         // 左側の画像
@@ -481,7 +500,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
             }}
           >
             <img
-              src={getImageSrc(spreadPages.left!)}
+              src={getImageSrc(spreadPages.left!, generateFileUrl)}
               alt={spreadPages.left!.name}
               className="max-w-none select-none block"
               style={{
@@ -491,12 +510,19 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
               }}
               onLoad={handleImageLoad}
               onError={(e) => {
-                console.error('Failed to load image:', spreadPages.left!.path, e)
+                const img = e.currentTarget
+                console.error('Failed to load spread image (left):', {
+                  path: spreadPages.left!.path,
+                  src: img.src,
+                  error: e,
+                  naturalWidth: img.naturalWidth,
+                  naturalHeight: img.naturalHeight
+                })
               }}
               draggable={false}
             />
             <img
-              src={getImageSrc(spreadPages.right!)}
+              src={getImageSrc(spreadPages.right!, generateFileUrl)}
               alt={spreadPages.right!.name}
               className="max-w-none select-none block"
               style={{
@@ -506,7 +532,14 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
               }}
               onLoad={handleImageLoad}
               onError={(e) => {
-                console.error('Failed to load image:', spreadPages.right!.path, e)
+                const img = e.currentTarget
+                console.error('Failed to load spread image (right):', {
+                  path: spreadPages.right!.path,
+                  src: img.src,
+                  error: e,
+                  naturalWidth: img.naturalWidth,
+                  naturalHeight: img.naturalHeight
+                })
               }}
               draggable={false}
             />
@@ -514,7 +547,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
         ) : (
           // 単ページ表示
           <img
-            src={getImageSrc(file)}
+            src={getImageSrc(file, generateFileUrl)}
             alt={file.name}
             className="select-none"
             style={{
@@ -524,7 +557,14 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
             }}
             onLoad={handleImageLoad}
             onError={(e) => {
-              console.error('Failed to load image:', file.path, e)
+              const img = e.currentTarget
+              console.error('Failed to load single image:', {
+                path: file.path,
+                src: img.src,
+                error: e,
+                naturalWidth: img.naturalWidth,
+                naturalHeight: img.naturalHeight
+              })
             }}
             draggable={false}
           />

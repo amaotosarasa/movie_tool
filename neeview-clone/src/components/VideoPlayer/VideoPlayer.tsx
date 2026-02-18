@@ -3,9 +3,10 @@ import { MediaFile } from '../../App'
 
 interface VideoPlayerProps {
   file: MediaFile
+  generateFileUrl?: (file: MediaFile) => string
 }
 
-export function VideoPlayer({ file }: VideoPlayerProps) {
+export function VideoPlayer({ file, generateFileUrl }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -26,22 +27,47 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
     setDuration(0)
     setError('')
 
-    // Convert file path to proper URL for Electron
-    const convertFilePathToUrl = (filePath: string): string => {
+    // Convert file path to proper URL for Electron (ZIP対応)
+    const convertFilePathToUrl = (mediaFile: MediaFile): string => {
       try {
-        // Handle Windows paths
-        const normalizedPath = filePath.replace(/\\/g, '/')
-        // Use custom safe-file protocol for local files in Electron
-        const url = normalizedPath.startsWith('safe-file:') ? normalizedPath : `safe-file:${normalizedPath}`
-        return url
+        // ZIPファイル内のファイルの場合は、generateFileUrl関数を使用
+        if (mediaFile.isZipContent && generateFileUrl) {
+          console.log('Using ZIP file URL generation for video')
+          return generateFileUrl(mediaFile)
+        }
+
+        // 通常の動画ファイルの場合は、HTML5 video要素互換性のためfile://プロトコルを直接使用
+        console.log('Using direct file:// protocol for video compatibility')
+        const filePath = mediaFile.path.replace(/\\/g, '/')
+        const fileUrl = `file:///${filePath}`
+        console.log('Generated file:// URL for video:', fileUrl)
+        return fileUrl
       } catch (err) {
         console.error('Error converting file path to URL:', err)
-        return filePath
+        return mediaFile.path
       }
     }
 
-    setVideoSrc(convertFilePathToUrl(file.path))
-  }, [file.path])
+    const url = convertFilePathToUrl(file)
+    console.log('Setting video source to:', url)
+    setVideoSrc(url)
+
+    // 動画要素のロード強制実行
+    if (videoRef.current) {
+      const video = videoRef.current
+      video.load()
+
+      // 2秒後に自動プレイを試行（デバッグ目的）
+      setTimeout(() => {
+        if (video.readyState >= 2) { // HAVE_CURRENT_DATA以上
+          console.log('Auto-attempting play due to ready state:', video.readyState)
+          video.play().catch(error => {
+            console.log('Auto-play failed (expected):', error.message)
+          })
+        }
+      }, 2000)
+    }
+  }, [file.path, generateFileUrl])
 
   // Update current time
   useEffect(() => {
@@ -217,7 +243,8 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
         src={videoSrc}
         className="w-full h-full object-contain"
         controls={false}
-        preload="metadata"
+        preload="none"
+        crossOrigin="anonymous"
         onPlay={() => {
           setIsPlaying(true)
         }}
@@ -225,11 +252,56 @@ export function VideoPlayer({ file }: VideoPlayerProps) {
           setIsPlaying(false)
         }}
         onError={(e) => {
-          console.error('Failed to load video:', file.path, e)
-          setError(`動画の読み込みに失敗しました: ${file.name}`)
+          const videoElement = e.target as HTMLVideoElement
+          console.error('Video error details:', {
+            filePath: file.path,
+            videoSrc,
+            error: e,
+            videoError: videoElement.error,
+            networkState: videoElement.networkState,
+            readyState: videoElement.readyState,
+            currentSrc: videoElement.currentSrc
+          })
+
+          let errorMessage = `動画の読み込みに失敗しました: ${file.name}`
+
+          if (videoElement.error) {
+            switch (videoElement.error.code) {
+              case MediaError.MEDIA_ERR_ABORTED:
+                errorMessage += ' (ユーザーによって中断されました)'
+                break
+              case MediaError.MEDIA_ERR_NETWORK:
+                errorMessage += ' (ネットワークエラー)'
+                break
+              case MediaError.MEDIA_ERR_DECODE:
+                errorMessage += ' (デコードエラー - ファイル形式が対応していない可能性があります)'
+                break
+              case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                errorMessage += ' (ファイル形式またはコーデックが対応していません)'
+                break
+              default:
+                errorMessage += ` (未知のエラー: ${videoElement.error.code})`
+            }
+          }
+
+          setError(errorMessage)
         }}
         onLoadedData={() => {
+          console.log('Video loaded successfully')
           setError('')
+        }}
+        onCanPlayThrough={() => {
+          console.log('Video can play through')
+        }}
+        onLoadStart={() => {
+          console.log('Video load started')
+        }}
+        onProgress={(e) => {
+          const video = e.target as HTMLVideoElement
+          console.log('Loading progress:', {
+            buffered: video.buffered.length > 0 ? video.buffered.end(0) : 0,
+            duration: video.duration
+          })
         }}
       />
 
