@@ -93,42 +93,28 @@ function App() {
 
   // ZIP対応のURL生成
   const generateFileUrl = (file: MediaFile): string => {
-    console.log(`=== GENERATE FILE URL DEBUG START ===`)
-    console.log('File object:', file)
-    console.log('Is ZIP content:', file.isZipContent)
-    console.log('ZIP Path:', file.zipPath)
-    console.log('Internal Path:', file.internalPath)
 
     if (file.isZipContent && file.zipPath && file.internalPath) {
       // ZIP内ファイル用URL: safe-file://zip::{zipPath}::{internalPath}
       // パスの各部分を個別にエンコード
-      console.log('Encoding ZIP paths...')
       const encodedZipPath = encodeURIComponent(file.zipPath)
       const encodedInternalPath = encodeURIComponent(file.internalPath)
-      console.log('Encoded ZIP Path:', encodedZipPath)
-      console.log('Encoded Internal Path:', encodedInternalPath)
 
       const zipUrl = `safe-file://zip::${encodedZipPath}::${encodedInternalPath}`
-      console.log('✓ Generated ZIP URL:', zipUrl)
-      console.log(`=== GENERATE FILE URL DEBUG END (ZIP) ===`)
       return zipUrl
     } else {
       // 通常ファイルの処理をファイル種別で分ける
       if (file.type === 'video') {
         // 動画ファイルは VideoPlayer で直接 file:// プロトコルを使用するため
         // App.tsx側では safe-file:// を返すが、実際はVideoPlayerで上書きされる
-        console.log('Video file detected - will be overridden by VideoPlayer')
       } else if (file.type === 'image') {
         // 画像ファイルも ImageViewer で直接 file:// プロトコルを使用するため
         // App.tsx側では safe-file:// を返すが、実際はImageViewerで上書きされる
-        console.log('Image file detected - will be overridden by ImageViewer')
       }
 
       // 通常ファイル用URL - safe-file:// プロトコルを返すが、実際は各コンポーネントで上書きされる
       const encodedPath = encodeURIComponent(file.path)
       const regularUrl = `safe-file://${encodedPath}`
-      console.log('Generated regular URL (will be overridden):', regularUrl)
-      console.log('Original file path:', file.path)
       return regularUrl
     }
   }

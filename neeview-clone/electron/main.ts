@@ -87,58 +87,36 @@ app.whenReady().then(() => {
 
   // Register custom protocol for local files and ZIP contents (hybrid approach)
   protocol.registerBufferProtocol('safe-file', async (request, callback) => {
-    console.log(`=== PROTOCOL HANDLER DEBUG START ===`)
-    console.log('Original URL:', request.url)
-
     try {
       // Extract and decode path from URL
       let filePath = request.url.replace('safe-file://', '')
-      console.log('Step 1: Raw URL path after protocol removal:', filePath)
       filePath = decodeURIComponent(filePath)
-      console.log('Step 2: Decoded file path:', filePath)
 
       // Check if this is a ZIP file request: zip::{zipPath}::{internalPath}
       if (filePath.startsWith('zip::')) {
-        console.log('✓ Detected ZIP file request')
         const parts = filePath.split('::')
-        console.log('Step 3: Split parts:', parts)
 
         if (parts.length === 3) {
           const [, encodedZipPath, encodedInternalPath] = parts
-          console.log('Step 4: Encoded paths:')
-          console.log('  Zip Path (encoded):', encodedZipPath)
-          console.log('  Internal Path (encoded):', encodedInternalPath)
 
           // エンコードされたパスをデコード
           const zipPath = decodeURIComponent(encodedZipPath)
           const internalPath = decodeURIComponent(encodedInternalPath)
-
-          console.log('Step 5: Final decoded paths:')
-          console.log('  Zip Path (final):', zipPath)
-          console.log('  Internal Path (final):', internalPath)
-          console.log(`Calling ZipHandler.extractFile("${zipPath}", "${internalPath}")`)
 
           try {
             const zipHandler = new ZipHandler()
             const buffer = await zipHandler.extractFile(zipPath, internalPath)
             const mimeType = getMimeType(internalPath)
 
-            console.log(`✅ ZIP file extracted successfully: ${buffer.length} bytes, MIME: ${mimeType}`)
-            console.log(`=== PROTOCOL HANDLER DEBUG END (SUCCESS) ===`)
-
             // For ZIP files, return buffer directly
             callback({ mimeType, data: buffer })
             return
           } catch (error) {
-            console.log(`❌ ZIP extraction failed:`)
-            console.error('Error details:', error)
-            console.log(`=== PROTOCOL HANDLER DEBUG END (ZIP FAILED) ===`)
+            console.error('ZIP extraction failed:', error)
             callback({ error: -6 })
             return
           }
         } else {
-          console.log(`❌ Invalid ZIP URL format - expected 3 parts, got ${parts.length}`)
-          console.log(`=== PROTOCOL HANDLER DEBUG END (INVALID FORMAT) ===`)
           callback({ error: -6 })
           return
         }
@@ -149,16 +127,12 @@ app.whenReady().then(() => {
 
       // Windows path normalization:
       // Handle common Windows path patterns from URL parsing
-      console.log('Checking path for Windows pattern:', cleanPath)
       if (cleanPath.startsWith('/') && cleanPath.length > 1) {
         // Remove leading slash if it looks like a Windows absolute path
         if (/^\/[A-Za-z][:/\\]/.test(cleanPath)) {
           cleanPath = cleanPath.substring(1)
-          console.log('Removed leading slash from Windows path')
         }
       }
-
-      console.log('Final file path for reading:', cleanPath)
 
       // Smart file handling: use temp files for videos to bypass HTML5 limitations
       const { readFile, stat } = await import('fs/promises')
@@ -166,17 +140,14 @@ app.whenReady().then(() => {
 
       // Check if this is a video file
       const isVideo = mimeType.startsWith('video/')
-      console.log(`File type determined: ${mimeType}, isVideo: ${isVideo}`)
 
       if (isVideo) {
         // For video files, create a temporary file and redirect to file:// protocol
         // This allows HTML5 video elements to properly stream large files
-        console.log('Processing video file - creating temporary file for streaming')
 
         try {
           // Check file size first
           const stats = await stat(cleanPath)
-          console.log(`Video file size: ${stats.size} bytes`)
 
           // Generate unique temp file name
           const uniqueId = Date.now() + '_' + Math.random().toString(36).substr(2, 9)
@@ -189,12 +160,10 @@ app.whenReady().then(() => {
           await mkdir(dirname(tempFilePath), { recursive: true })
 
           // Copy file to temp location (this handles any size file efficiently)
-          console.log(`Copying video to temp location: ${tempFilePath}`)
           await copyFile(cleanPath, tempFilePath)
 
           // Return redirect to file:// protocol which HTML5 video can handle
           const fileUrl = `file:///${tempFilePath.replace(/\\/g, '/')}`
-          console.log(`Redirecting video to: ${fileUrl}`)
 
           // Schedule cleanup after 1 hour
           setTimeout(async () => {

@@ -65,10 +65,6 @@ export class ZipHandler {
    * ZIP内のファイルを一時ファイルとして抽出（file://プロトコル用）
    */
   async extractToTempFile(zipPath: string, internalPath: string): Promise<string> {
-    console.log(`=== EXTRACT TO TEMP FILE START ===`)
-    console.log(`ZIP Path: ${zipPath}`)
-    console.log(`Internal Path: ${internalPath}`)
-
     // キャッシュキー作成
     const cacheKey = `${zipPath}::${internalPath}`
 
@@ -76,8 +72,6 @@ export class ZipHandler {
     if (ZipHandler.tempFileCache.has(cacheKey)) {
       const tempPath = ZipHandler.tempFileCache.get(cacheKey)!
       if (fs.existsSync(tempPath)) {
-        console.log(`✓ Using cached temp file: ${tempPath}`)
-        console.log(`=== EXTRACT TO TEMP FILE END (CACHED) ===`)
         return tempPath
       } else {
         // 一時ファイルが削除されている場合はキャッシュをクリア
@@ -89,7 +83,6 @@ export class ZipHandler {
       // 一時ディレクトリを作成
       if (!fs.existsSync(ZipHandler.TEMP_DIR)) {
         fs.mkdirSync(ZipHandler.TEMP_DIR, { recursive: true })
-        console.log(`Created temp directory: ${ZipHandler.TEMP_DIR}`)
       }
 
       // ファイルを抽出
@@ -106,12 +99,9 @@ export class ZipHandler {
       // キャッシュに追加
       ZipHandler.tempFileCache.set(cacheKey, tempPath)
 
-      console.log(`✅ Created temp file: ${tempPath}`)
-      console.log(`=== EXTRACT TO TEMP FILE END (SUCCESS) ===`)
       return tempPath
     } catch (error) {
-      console.log(`❌ Temp file creation failed:`, error)
-      console.log(`=== EXTRACT TO TEMP FILE END (FAILED) ===`)
+      console.error('Temp file creation failed:', error)
       throw error
     }
   }

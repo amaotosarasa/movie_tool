@@ -15,32 +15,25 @@ interface ImageViewerProps {
 }
 
 function getImageSrc(file: MediaFile, generateFileUrl?: (file: MediaFile) => string, zipTempUrls?: Map<string, string>): string {
-  console.log('getImageSrc called for image file:', file.name, file.path)
-
   try {
     // ZIPファイル内の画像の場合は、一時ファイルのfile://URLを使用
     if (file.isZipContent && file.zipPath && file.internalPath) {
-      console.log('Processing ZIP file with temp file approach')
       const tempKey = `${file.zipPath}::${file.internalPath}`
 
       // 一時ファイルが作成済みの場合はそのfile://URLを返す
       if (zipTempUrls && zipTempUrls.has(tempKey)) {
         const tempFilePath = zipTempUrls.get(tempKey)!
         const fileUrl = `file:///${tempFilePath.replace(/\\/g, '/')}`
-        console.log('Using cached temp file URL:', fileUrl)
         return fileUrl
       }
 
       // 一時ファイルが作成されていない場合はプレースホルダーを返す
-      console.log('Temp file not ready, returning placeholder')
       return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjNDQ0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5LOADING...</dGV4dD48L3N2Zz4='
     }
 
     // 通常の画像ファイルの場合は、HTML5 img要素互換性のためfile://プロトコルを直接使用
-    console.log('Using direct file:// protocol for image compatibility')
     const filePath = file.path.replace(/\\/g, '/')
     const fileUrl = `file:///${filePath}`
-    console.log('Generated file:// URL for image:', fileUrl)
     return fileUrl
   } catch (err) {
     console.error('Error converting image path to URL:', err)
@@ -139,9 +132,7 @@ export function ImageViewer({ file, viewMode, spreadPages, generateFileUrl }: Im
         const tempKey = `${zipFile.zipPath}::${zipFile.internalPath}`
         if (!zipTempUrls.has(tempKey)) {
           try {
-            console.log(`Extracting temp file for: ${zipFile.zipPath} :: ${zipFile.internalPath}`)
             const tempFilePath = await window.api.extractZipToTempFile(zipFile.zipPath!, zipFile.internalPath!)
-            console.log(`Temp file created at: ${tempFilePath}`)
 
             setZipTempUrls(prev => {
               const newMap = new Map(prev)
