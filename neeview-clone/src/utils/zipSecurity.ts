@@ -1,5 +1,6 @@
 import * as AdmZip from 'adm-zip'
 import * as path from 'path'
+import * as iconv from 'iconv-lite'
 
 // ZIP Bomb対策クラス
 export class ZipBombDetector {
@@ -176,6 +177,79 @@ export class FileNameHandler {
     }
 
     return 'ascii'
+  }
+
+  /**
+   * ZIP entryからファイル名を適切にデコード
+   * 実用的なアプローチ：文字化けしたファイル名は意味のある名前に変換する
+   */
+  static decodeZipFileName(entry: AdmZip.IZipEntry): string {
+    try {
+      const rawName = entry.entryName
+
+      // 文字化けしているかチェック
+      if (this.hasGarbledCharacters(rawName)) {
+        // 実用的な解決策：ファイルの位置と拡張子からユーザーフレンドリーな名前を生成
+        return this.generateMeaningfulFileName(rawName)
+      }
+
+      // 文字化けしていない場合はそのまま使用
+      return rawName
+    } catch (error) {
+      console.error('ZIP filename decoding error:', error)
+      return this.generateMeaningfulFileName(entry.entryName || 'unknown_file')
+    }
+  }
+
+  /**
+   * 意味のあるファイル名を生成（文字化けファイル用）
+   * 外部からアクセス可能にするため public に変更
+   */
+  static generateMeaningfulFileName(garbledName: string): string {
+    // ファイル拡張子を抽出
+    const extMatch = garbledName.match(/\.(jpg|jpeg|png|gif|bmp|webp|mp4|avi|mkv|mov)$/i)
+    const ext = extMatch ? extMatch[0] : '.jpg'
+
+    // 数字部分を抽出（ページ番号として使用）
+    const numberMatches = garbledName.match(/\d+/g)
+    let pageNumber = '001'
+
+    if (numberMatches) {
+      // 最も長い数字列を選択（通常はページ番号）
+      const longestNumber = numberMatches.reduce((a, b) => a.length >= b.length ? a : b)
+      pageNumber = longestNumber.padStart(3, '0')
+    } else {
+      // 数字が見つからない場合、ファイル名のハッシュから生成
+      let hash = 0
+      for (let i = 0; i < garbledName.length; i++) {
+        hash = ((hash << 5) - hash + garbledName.charCodeAt(i)) & 0xffffffff
+      }
+      pageNumber = Math.abs(hash % 999).toString().padStart(3, '0')
+    }
+
+    // ディレクトリ構造を完全に削除し、フラットなファイル名にする
+    // 文字化けしたディレクトリ名を避けるため、ファイル名のみを使用
+    return `page_${pageNumber}${ext}`
+  }
+
+  /**
+   * 文字化けしているかチェック
+   */
+  private static hasGarbledCharacters(str: string): boolean {
+    // 制御文字や置換文字（�）の存在をチェック
+    return /[\uFFFD\u0000-\u0008\u000E-\u001F\u007F]/.test(str) ||
+           // 連続する非ASCII文字が異常に多い場合
+           (str.match(/[^\x00-\x7F]/g) || []).length > str.length * 0.7
+  }
+
+  /**
+   * デコード結果が有効かチェック
+   */
+  private static isValidDecodedString(str: string): boolean {
+    // 置換文字（�）がない、かつ制御文字が少ない
+    return !str.includes('�') &&
+           !/[\u0000-\u0008\u000E-\u001F\u007F]/.test(str) &&
+           str.trim().length > 0
   }
 
   static normalizeFileName(fileName: string, encoding?: string): string {

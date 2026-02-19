@@ -1,6 +1,7 @@
 import AdmZip from 'adm-zip'
 import * as path from 'path'
 import * as fs from 'fs'
+import * as os from 'os'
 import { ZipFileInfo, ZipInfo, ZipScanOptions, ZipError, ZipErrorType } from '../types/electron.d'
 import { ZipBombDetector, FileNameHandler, DEFAULT_SECURITY_POLICY } from './zipSecurity'
 
@@ -8,6 +9,13 @@ export class ZipHandler {
   private static readonly SUPPORTED_IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
   private static readonly SUPPORTED_VIDEO_EXTS = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
   private static readonly MAX_FILE_SIZE = 500 * 1024 * 1024 // 500MB (高画質ファイル対応)
+
+  // デコード済みパス → 元エントリ名のマッピングキャッシュ
+  private static pathMappingCache = new Map<string, Map<string, string>>()
+
+  // 一時ファイル管理
+  private static tempFileCache = new Map<string, string>() // {zipPath}::{internalPath} -> tempFilePath
+  private static readonly TEMP_DIR = path.join(os.tmpdir(), 'neeview-zip-temp')
 
   /**
    * ZIP内のメディアファイル一覧を取得
@@ -54,19 +62,132 @@ export class ZipHandler {
   }
 
   /**
+   * ZIP内のファイルを一時ファイルとして抽出（file://プロトコル用）
+   */
+  async extractToTempFile(zipPath: string, internalPath: string): Promise<string> {
+    console.log(`=== EXTRACT TO TEMP FILE START ===`)
+    console.log(`ZIP Path: ${zipPath}`)
+    console.log(`Internal Path: ${internalPath}`)
+
+    // キャッシュキー作成
+    const cacheKey = `${zipPath}::${internalPath}`
+
+    // 既に一時ファイルが存在する場合はそのパスを返す
+    if (ZipHandler.tempFileCache.has(cacheKey)) {
+      const tempPath = ZipHandler.tempFileCache.get(cacheKey)!
+      if (fs.existsSync(tempPath)) {
+        console.log(`✓ Using cached temp file: ${tempPath}`)
+        console.log(`=== EXTRACT TO TEMP FILE END (CACHED) ===`)
+        return tempPath
+      } else {
+        // 一時ファイルが削除されている場合はキャッシュをクリア
+        ZipHandler.tempFileCache.delete(cacheKey)
+      }
+    }
+
+    try {
+      // 一時ディレクトリを作成
+      if (!fs.existsSync(ZipHandler.TEMP_DIR)) {
+        fs.mkdirSync(ZipHandler.TEMP_DIR, { recursive: true })
+        console.log(`Created temp directory: ${ZipHandler.TEMP_DIR}`)
+      }
+
+      // ファイルを抽出
+      const buffer = await this.extractFile(zipPath, internalPath)
+
+      // 一時ファイルパスを生成（拡張子を保持）
+      const ext = path.extname(internalPath) || '.tmp'
+      const tempFileName = `zip_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`
+      const tempPath = path.join(ZipHandler.TEMP_DIR, tempFileName)
+
+      // 一時ファイルに書き込み
+      fs.writeFileSync(tempPath, buffer)
+
+      // キャッシュに追加
+      ZipHandler.tempFileCache.set(cacheKey, tempPath)
+
+      console.log(`✅ Created temp file: ${tempPath}`)
+      console.log(`=== EXTRACT TO TEMP FILE END (SUCCESS) ===`)
+      return tempPath
+    } catch (error) {
+      console.log(`❌ Temp file creation failed:`, error)
+      console.log(`=== EXTRACT TO TEMP FILE END (FAILED) ===`)
+      throw error
+    }
+  }
+
+  /**
    * ZIP内の特定ファイルを抽出
    */
   async extractFile(zipPath: string, internalPath: string): Promise<Buffer> {
     try {
+      console.log(`=== ZIP EXTRACT DEBUG START ===`)
+      console.log(`ZIP Path: ${zipPath}`)
+      console.log(`Internal Path: ${internalPath}`)
+
       const zip = new AdmZip(zipPath)
-      const entry = zip.getEntry(internalPath)
+      const allEntries = zip.getEntries()
+      console.log(`ZIP contains ${allEntries.length} total entries:`)
+      allEntries.forEach((e, i) => {
+        console.log(`  [${i}] Raw entry: "${e.entryName}"`)
+        const decoded = FileNameHandler.decodeZipFileName(e)
+        console.log(`      Decoded: "${decoded}"`)
+      })
+
+      // まずデコード済みパスで検索
+      console.log(`Step 1: Searching by direct path: "${internalPath}"`)
+      let entry = zip.getEntry(internalPath)
+      if (entry) {
+        console.log(`✓ Found entry directly: ${entry.entryName}`)
+      }
+
+      // 見つからない場合、マッピングキャッシュから元のエントリ名を取得
+      if (!entry) {
+        console.log(`Step 2: Checking mapping cache...`)
+        const zipMapping = ZipHandler.pathMappingCache.get(zipPath)
+        console.log(`Cache exists: ${!!zipMapping}`)
+        if (zipMapping) {
+          console.log(`Cache entries: ${zipMapping.size}`)
+          for (const [key, value] of zipMapping.entries()) {
+            console.log(`  Cache: "${key}" -> "${value}"`)
+          }
+        }
+
+        if (zipMapping && zipMapping.has(internalPath)) {
+          const originalEntryName = zipMapping.get(internalPath)!
+          entry = zip.getEntry(originalEntryName)
+          console.log(`✓ Found entry by cached mapping: ${originalEntryName} -> ${internalPath}`)
+        }
+      }
+
+      // それでも見つからない場合、全エントリを検索（フォールバック）
+      if (!entry) {
+        console.log(`Step 3: Fallback - scanning all entries for: "${internalPath}"`)
+        for (const e of allEntries) {
+          const decodedPath = FileNameHandler.decodeZipFileName(e)
+          console.log(`  Comparing: "${decodedPath}" === "${internalPath}"`)
+          if (decodedPath === internalPath) {
+            entry = e
+            console.log(`✓ Found entry by decoded path: ${e.entryName} -> ${decodedPath}`)
+            break
+          }
+        }
+      }
 
       if (!entry) {
+        console.log(`❌ Entry not found: ${internalPath}`)
+        console.log(`=== ZIP EXTRACT DEBUG END (FAILED) ===`)
         throw this.createError(ZipErrorType.CORRUPTED_ARCHIVE, `ファイルが見つかりません: ${internalPath}`)
       }
 
+      console.log(`✓ Entry found: ${entry.entryName}`)
+      console.log(`  Size: ${entry.header.size} bytes`)
+      console.log(`  Compressed: ${entry.header.compressedSize} bytes`)
+
       // サイズチェック
       if (entry.header.size > ZipHandler.MAX_FILE_SIZE) {
+        console.log(`❌ File too large: ${entry.header.size} > ${ZipHandler.MAX_FILE_SIZE}`)
+        console.log(`=== ZIP EXTRACT DEBUG END (FAILED) ===`)
         throw this.createError(ZipErrorType.FILE_TOO_LARGE, {
           fileSize: entry.header.size,
           maxSize: ZipHandler.MAX_FILE_SIZE,
@@ -77,6 +198,8 @@ export class ZipHandler {
       // セキュリティ検証
       const validation = ZipBombDetector.validateEntry(entry)
       if (!validation.valid) {
+        console.log(`❌ Security validation failed:`, validation.issues)
+        console.log(`=== ZIP EXTRACT DEBUG END (FAILED) ===`)
         throw this.createError(ZipErrorType.ZIP_BOMB_DETECTED, {
           fileName: internalPath,
           issues: validation.issues,
@@ -85,11 +208,16 @@ export class ZipHandler {
       }
 
       // ファイル抽出
+      console.log(`Attempting to read file buffer...`)
       const buffer = zip.readFile(entry)
       if (!buffer) {
+        console.log(`❌ Failed to read file buffer`)
+        console.log(`=== ZIP EXTRACT DEBUG END (FAILED) ===`)
         throw this.createError(ZipErrorType.CORRUPTED_ARCHIVE, `ファイル読み込みに失敗: ${internalPath}`)
       }
 
+      console.log(`✅ Successfully extracted file: ${buffer.length} bytes`)
+      console.log(`=== ZIP EXTRACT DEBUG END (SUCCESS) ===`)
       return buffer
     } catch (error) {
       if (error instanceof Error && 'type' in error) {
@@ -174,25 +302,41 @@ export class ZipHandler {
         continue
       }
 
-      // ファイル名正規化
-      const normalizedPath = FileNameHandler.sanitizeFileName(entry.entryName)
+      // ファイル名処理：文字化けを修復しようとせず、直接使用可能な名前を生成
+      const decodedPath = FileNameHandler.decodeZipFileName(entry)
+
+      // 実用的なアプローチ：文字化けファイル名から意味のある名前を生成
+      const meaningfulPath = FileNameHandler.generateMeaningfulFileName(entry.entryName)
+      const normalizedPath = FileNameHandler.sanitizeFileName(meaningfulPath)
       const compressionRatio = entry.header.compressedSize > 0
         ? entry.header.size / entry.header.compressedSize
         : 0
 
+      // マッピングキャッシュを更新：意味のある名前 -> 元のエントリ名
+      if (!ZipHandler.pathMappingCache.has(zipPath)) {
+        ZipHandler.pathMappingCache.set(zipPath, new Map<string, string>())
+      }
+      const zipMapping = ZipHandler.pathMappingCache.get(zipPath)!
+      // 意味のある名前をキーとして、元のエントリ名をマッピング
+      zipMapping.set(meaningfulPath, entry.entryName)
+
+      console.log(`Mapping: "${meaningfulPath}" -> "${entry.entryName}"`)
+
       // ZipFileInfo作成
+      // pathプロパティは一意識別子として使用するが、URL形式ではない形にする
       const zipFileInfo: ZipFileInfo = {
-        path: `${zipPath}::${entry.entryName}`, // 一意識別子
-        name: path.basename(entry.entryName),
+        path: `[ZIP]${path.basename(zipPath)}/${meaningfulPath}`, // 表示用・識別用パス（意味のある名前使用）
+        name: path.basename(meaningfulPath),
         type: mediaType,
         size: entry.header.size,
         modified: entry.header.time.getTime(),
         zipPath,
-        internalPath: entry.entryName,
+        internalPath: meaningfulPath, // 意味のある名前を使用（マッピングキーと一致）
         isZipContent: true,
         encodedPath: normalizedPath,
         compressionRatio,
-        depth: entry.entryName.split('/').length - 1
+        depth: meaningfulPath.split('/').length - 1,
+        originalEntryName: entry.entryName // 元のエントリ名を保持
       }
 
       mediaFiles.push(zipFileInfo)

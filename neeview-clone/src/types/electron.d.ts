@@ -26,6 +26,7 @@ export interface ZipFileInfo extends MediaFileInfo {
   extractionTime?: number     // 抽出時間記録
   compressionRatio: number    // 圧縮比
   depth: number               // ディレクトリ階層数
+  originalEntryName: string   // 元のZIPエントリ名（文字化け状態も含む）
 }
 
 export interface ZipInfo {

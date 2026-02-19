@@ -87,39 +87,60 @@ app.whenReady().then(() => {
 
   // Register custom protocol for local files and ZIP contents (hybrid approach)
   protocol.registerBufferProtocol('safe-file', async (request, callback) => {
-    console.log('Protocol handler called for URL:', request.url)
+    console.log(`=== PROTOCOL HANDLER DEBUG START ===`)
+    console.log('Original URL:', request.url)
 
     try {
       // Extract and decode path from URL
       let filePath = request.url.replace('safe-file://', '')
-      console.log('Raw URL path after protocol removal:', filePath)
+      console.log('Step 1: Raw URL path after protocol removal:', filePath)
       filePath = decodeURIComponent(filePath)
-      console.log('Decoded file path:', filePath)
+      console.log('Step 2: Decoded file path:', filePath)
 
       // Check if this is a ZIP file request: zip::{zipPath}::{internalPath}
       if (filePath.startsWith('zip::')) {
-        console.log('Processing ZIP file request')
+        console.log('✓ Detected ZIP file request')
         const parts = filePath.split('::')
+        console.log('Step 3: Split parts:', parts)
 
         if (parts.length === 3) {
-          const [, zipPath, internalPath] = parts
-          console.log('ZIP extraction:', { zipPath, internalPath })
+          const [, encodedZipPath, encodedInternalPath] = parts
+          console.log('Step 4: Encoded paths:')
+          console.log('  Zip Path (encoded):', encodedZipPath)
+          console.log('  Internal Path (encoded):', encodedInternalPath)
+
+          // エンコードされたパスをデコード
+          const zipPath = decodeURIComponent(encodedZipPath)
+          const internalPath = decodeURIComponent(encodedInternalPath)
+
+          console.log('Step 5: Final decoded paths:')
+          console.log('  Zip Path (final):', zipPath)
+          console.log('  Internal Path (final):', internalPath)
+          console.log(`Calling ZipHandler.extractFile("${zipPath}", "${internalPath}")`)
 
           try {
             const zipHandler = new ZipHandler()
             const buffer = await zipHandler.extractFile(zipPath, internalPath)
             const mimeType = getMimeType(internalPath)
 
-            console.log(`ZIP file extracted: ${buffer.length} bytes, MIME: ${mimeType}`)
+            console.log(`✅ ZIP file extracted successfully: ${buffer.length} bytes, MIME: ${mimeType}`)
+            console.log(`=== PROTOCOL HANDLER DEBUG END (SUCCESS) ===`)
 
             // For ZIP files, return buffer directly
             callback({ mimeType, data: buffer })
             return
           } catch (error) {
-            console.error('ZIP extraction failed:', error)
+            console.log(`❌ ZIP extraction failed:`)
+            console.error('Error details:', error)
+            console.log(`=== PROTOCOL HANDLER DEBUG END (ZIP FAILED) ===`)
             callback({ error: -6 })
             return
           }
+        } else {
+          console.log(`❌ Invalid ZIP URL format - expected 3 parts, got ${parts.length}`)
+          console.log(`=== PROTOCOL HANDLER DEBUG END (INVALID FORMAT) ===`)
+          callback({ error: -6 })
+          return
         }
       }
 
@@ -400,6 +421,17 @@ function setupZipHandlers() {
     await mkdir(tempDir, { recursive: true }).catch(error => {
       console.warn('Failed to create temp directory:', error)
     })
+  })
+
+  // ZIP temp file extraction
+  ipcMain.handle('zip:extractToTempFile', async (_, zipPath: string, internalPath: string): Promise<string> => {
+    try {
+      const zipHandler = new ZipHandler()
+      return await zipHandler.extractToTempFile(zipPath, internalPath)
+    } catch (error) {
+      console.error('ZIP temp file extraction failed:', error)
+      throw error
+    }
   })
 
   // ZIP file scanning

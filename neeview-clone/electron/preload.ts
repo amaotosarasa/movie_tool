@@ -22,6 +22,7 @@ const ALLOWED_IPC_CHANNELS = [
   // ZIP operations (Phase 1 prepared)
   'zip:scan',
   'zip:extractFile',
+  'zip:extractToTempFile',
   'zip:validate',
   'zip:cleanupTemp',
   'zip:cancelOperation',
@@ -95,6 +96,7 @@ const api = {
   // ZIP operations (Phase 1 prepared - using secure IPC)
   scanZip: (zipPath: string, options?: any) => secureIpcRenderer.invoke('zip:scan', zipPath, options),
   extractZipFile: (zipPath: string, internalPath: string, options?: any) => secureIpcRenderer.invoke('zip:extractFile', zipPath, internalPath, options),
+  extractZipToTempFile: (zipPath: string, internalPath: string): Promise<string> => secureIpcRenderer.invoke('zip:extractToTempFile', zipPath, internalPath),
   validateZip: (zipPath: string) => secureIpcRenderer.invoke('zip:validate', zipPath),
   cleanupZipTemp: (zipPath?: string) => secureIpcRenderer.invoke('zip:cleanupTemp', zipPath),
   cancelZipOperation: (operationId: string) => secureIpcRenderer.invoke('zip:cancelOperation', operationId),

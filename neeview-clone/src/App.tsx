@@ -93,15 +93,24 @@ function App() {
 
   // ZIP対応のURL生成
   const generateFileUrl = (file: MediaFile): string => {
-    console.log('generateFileUrl called for file:', file)
+    console.log(`=== GENERATE FILE URL DEBUG START ===`)
+    console.log('File object:', file)
+    console.log('Is ZIP content:', file.isZipContent)
+    console.log('ZIP Path:', file.zipPath)
+    console.log('Internal Path:', file.internalPath)
 
     if (file.isZipContent && file.zipPath && file.internalPath) {
       // ZIP内ファイル用URL: safe-file://zip::{zipPath}::{internalPath}
       // パスの各部分を個別にエンコード
+      console.log('Encoding ZIP paths...')
       const encodedZipPath = encodeURIComponent(file.zipPath)
       const encodedInternalPath = encodeURIComponent(file.internalPath)
+      console.log('Encoded ZIP Path:', encodedZipPath)
+      console.log('Encoded Internal Path:', encodedInternalPath)
+
       const zipUrl = `safe-file://zip::${encodedZipPath}::${encodedInternalPath}`
-      console.log('Generated ZIP URL:', zipUrl)
+      console.log('✓ Generated ZIP URL:', zipUrl)
+      console.log(`=== GENERATE FILE URL DEBUG END (ZIP) ===`)
       return zipUrl
     } else {
       // 通常ファイルの処理をファイル種別で分ける
