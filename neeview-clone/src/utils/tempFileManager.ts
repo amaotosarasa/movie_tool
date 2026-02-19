@@ -38,9 +38,7 @@ export class TempFileManager {
       this.startCleanupTimer()
 
       this.initialized = true
-      console.log(`TempFileManager initialized. Temp dir: ${this.TEMP_DIR}`)
     } catch (error) {
-      console.error('Failed to initialize TempFileManager:', error)
       throw error
     }
   }
@@ -108,11 +106,9 @@ export class TempFileManager {
 
       this.tempFiles.set(tempFilePath, tempFileInfo)
 
-      console.log(`Temp file created: ${tempFileName} (${buffer.length} bytes)`)
       return tempFilePath
 
     } catch (error) {
-      console.error('Failed to save temp file:', error)
       throw new Error(`一時ファイルの保存に失敗しました: ${error.message}`)
     }
   }
@@ -156,7 +152,6 @@ export class TempFileManager {
       }
     }
 
-    console.log(`Cleaned up ${cleaned} temp files for ${path.basename(zipPath)}`)
     return { cleaned, errors }
   }
 
@@ -181,7 +176,6 @@ export class TempFileManager {
       }
     }
 
-    console.log(`Cleaned up all ${cleaned} temp files`)
     return { cleaned, errors }
   }
 
@@ -214,10 +208,6 @@ export class TempFileManager {
       } catch (error) {
         errors.push(`Failed to delete old file ${filePath}: ${error.message}`)
       }
-    }
-
-    if (cleaned > 0) {
-      console.log(`Cleaned up ${cleaned} old temp files`)
     }
 
     return { cleaned, errors }
@@ -269,7 +259,7 @@ export class TempFileManager {
         await this.cleanupOldFiles()
         await this.ensureDiskSpace(0) // サイズ制限チェック
       } catch (error) {
-        console.error('Cleanup timer error:', error)
+        // サイレントエラー
       }
     }, this.CLEANUP_INTERVAL)
   }
@@ -319,7 +309,6 @@ export class TempFileManager {
             const fileAge = Date.now() - stats.mtime.getTime()
             if (fileAge > this.MAX_FILE_AGE) {
               await fs.promises.unlink(filePath)
-              console.log(`Removed orphaned temp file: ${fileName}`)
             } else {
               // メタデータ登録（推定）
               const tempFileInfo: TempFileInfo = {
@@ -332,12 +321,12 @@ export class TempFileManager {
               this.tempFiles.set(filePath, tempFileInfo)
             }
           } catch (error) {
-            console.warn(`Failed to process existing temp file ${fileName}:`, error)
+            // サイレントエラー
           }
         }
       }
     } catch (error) {
-      console.warn('Failed to discover existing temp files:', error)
+      // サイレントエラー
     }
   }
 
@@ -368,11 +357,10 @@ export class TempFileManager {
             break
           }
         } catch (error) {
-          console.warn(`Failed to delete temp file for space: ${filePath}`, error)
+          // サイレントエラー
         }
       }
 
-      console.log(`Freed ${Math.round(freedSize / 1024 / 1024)}MB of temp space`)
     }
   }
 
@@ -382,6 +370,5 @@ export class TempFileManager {
   static async shutdown(): Promise<void> {
     this.stopCleanupTimer()
     // 必要に応じてクリーンアップ（開発モードでは保持することも）
-    console.log('TempFileManager shutdown')
   }
 }

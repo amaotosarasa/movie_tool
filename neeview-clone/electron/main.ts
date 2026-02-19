@@ -112,7 +112,6 @@ app.whenReady().then(() => {
             callback({ mimeType, data: buffer })
             return
           } catch (error) {
-            console.error('ZIP extraction failed:', error)
             callback({ error: -6 })
             return
           }
@@ -170,9 +169,8 @@ app.whenReady().then(() => {
             try {
               const { unlink } = await import('fs/promises')
               await unlink(tempFilePath)
-              console.log(`Cleaned up temp video file: ${tempFilePath}`)
             } catch (cleanupError) {
-              console.warn('Failed to cleanup temp video file:', cleanupError)
+              // Silent cleanup error
             }
           }, 3600000) // 1 hour
 
@@ -187,16 +185,13 @@ app.whenReady().then(() => {
           return
 
         } catch (videoError) {
-          console.error('Failed to process video file:', videoError)
           callback({ error: -6 })
           return
         }
       }
 
       // For non-video files (images), use direct buffer approach
-      console.log('Processing image file - using direct buffer approach')
       const buffer = await readFile(cleanPath)
-      console.log(`Successfully read image file: ${buffer.length} bytes, MIME: ${mimeType}`)
 
       // Provide complete headers for image display
       callback({
@@ -209,7 +204,6 @@ app.whenReady().then(() => {
       })
 
     } catch (error) {
-      console.error('Failed to process request:', error)
       callback({ error: -6 })
     }
   })
@@ -343,7 +337,6 @@ function setupIpcHandlers() {
       const mediaFiles = await scanFolderForMediaFiles(folderPath, scanOptions)
       return mediaFiles
     } catch (error) {
-      console.error('Failed to scan folder:', error)
       throw error
     }
   })
@@ -381,14 +374,14 @@ function setupIpcHandlers() {
 function setupZipHandlers() {
   // Initialize TempFileManager
   TempFileManager.initialize().catch(error => {
-    console.error('Failed to initialize TempFileManager:', error)
+    // Silent error
   })
 
   // Create temp directory for video files asynchronously
   import('fs/promises').then(async ({ mkdir }) => {
     const tempDir = join(tmpdir(), 'neeview-temp')
     await mkdir(tempDir, { recursive: true }).catch(error => {
-      console.warn('Failed to create temp directory:', error)
+      // Silent error
     })
   })
 
@@ -398,7 +391,6 @@ function setupZipHandlers() {
       const zipHandler = new ZipHandler()
       return await zipHandler.extractToTempFile(zipPath, internalPath)
     } catch (error) {
-      console.error('ZIP temp file extraction failed:', error)
       throw error
     }
   })
@@ -411,7 +403,6 @@ function setupZipHandlers() {
       const info = await zipHandler.validateZip(zipPath)
       return { files, info }
     } catch (error) {
-      console.error('ZIP scan error:', error)
       throw error
     }
   })
@@ -430,7 +421,6 @@ function setupZipHandlers() {
 
       return tempFilePath
     } catch (error) {
-      console.error('ZIP extraction error:', error)
       throw error
     }
   })
@@ -442,7 +432,6 @@ function setupZipHandlers() {
       const info = await zipHandler.validateZip(zipPath)
       return info
     } catch (error) {
-      console.error('ZIP validation error:', error)
       throw error
     }
   })
@@ -456,7 +445,6 @@ function setupZipHandlers() {
         return await TempFileManager.cleanupAll()
       }
     } catch (error) {
-      console.error('ZIP cleanup error:', error)
       throw error
     }
   })
@@ -472,7 +460,6 @@ function setupZipHandlers() {
         remaining: stats.fileCount - cleanupResult.cleaned
       }
     } catch (error) {
-      console.error('ZIP cache optimization error:', error)
       throw error
     }
   })
@@ -481,10 +468,8 @@ function setupZipHandlers() {
   ipcMain.handle('zip:cancelOperation', async (_, operationId: string) => {
     try {
       // Phase 2: Basic implementation - always return false (not implemented)
-      console.warn('ZIP operation cancellation not yet implemented:', operationId)
       return false
     } catch (error) {
-      console.error('ZIP cancel error:', error)
       throw error
     }
   })
@@ -493,10 +478,8 @@ function setupZipHandlers() {
   ipcMain.handle('zip:getProgress', async (_, operationId: string) => {
     try {
       // Phase 2: Basic implementation - always return null (not implemented)
-      console.warn('ZIP progress tracking not yet implemented:', operationId)
       return null
     } catch (error) {
-      console.error('ZIP progress error:', error)
       throw error
     }
   })
@@ -505,11 +488,9 @@ function setupZipHandlers() {
   ipcMain.handle('zip:preloadFiles', async (_, zipPath: string, filePaths: string[]) => {
     try {
       // Phase 2: Basic implementation - log only
-      console.log('ZIP preloading requested for:', zipPath, filePaths.length, 'files')
       // In Phase 3, this will implement background extraction
       return Promise.resolve()
     } catch (error) {
-      console.error('ZIP preload error:', error)
       throw error
     }
   })
@@ -563,13 +544,13 @@ async function scanFolderForMediaFiles(folderPath: string, options: ScanOptions 
                 })
               }
             } catch (statError) {
-              console.warn(`Failed to get stats for file: ${fullPath}`, statError)
+              // Silent error
             }
           }
         }
       }
     } catch (error) {
-      console.warn(`Failed to read directory: ${dirPath}`, error)
+      // Silent error
     }
   }
 

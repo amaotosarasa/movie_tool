@@ -196,7 +196,7 @@ export class FileNameHandler {
       // 文字化けしていない場合はそのまま使用
       return rawName
     } catch (error) {
-      console.error('ZIP filename decoding error:', error)
+      // ZIP filename decoding error
       return this.generateMeaningfulFileName(entry.entryName || 'unknown_file')
     }
   }

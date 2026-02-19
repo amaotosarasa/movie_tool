@@ -40,7 +40,7 @@ function validateChannel(channel: string): boolean {
 const secureIpcRenderer = {
   send: (channel: string, ...args: any[]) => {
     if (!validateChannel(channel)) {
-      console.error(`Blocked invalid IPC send channel: ${channel}`)
+      // Blocked invalid IPC send channel
       return
     }
     return ipcRenderer.send(channel, ...args)
@@ -48,7 +48,7 @@ const secureIpcRenderer = {
 
   invoke: (channel: string, ...args: any[]) => {
     if (!validateChannel(channel)) {
-      console.error(`Blocked invalid IPC invoke channel: ${channel}`)
+      // Blocked invalid IPC invoke channel
       return Promise.reject(new Error(`Invalid IPC channel: ${channel}`))
     }
     return ipcRenderer.invoke(channel, ...args)
@@ -56,7 +56,7 @@ const secureIpcRenderer = {
 
   on: (channel: string, listener: (...args: any[]) => void) => {
     if (!validateChannel(channel)) {
-      console.error(`Blocked invalid IPC on channel: ${channel}`)
+      // Blocked invalid IPC on channel
       return
     }
     return ipcRenderer.on(channel, listener)
@@ -64,7 +64,7 @@ const secureIpcRenderer = {
 
   removeAllListeners: (channel: string) => {
     if (!validateChannel(channel)) {
-      console.error(`Blocked invalid IPC removeAllListeners channel: ${channel}`)
+      // Blocked invalid IPC removeAllListeners channel
       return
     }
     return ipcRenderer.removeAllListeners(channel)
@@ -126,7 +126,7 @@ try {
   contextBridge.exposeInMainWorld('electron', electronAPI)
   contextBridge.exposeInMainWorld('api', api)
 } catch (error) {
-  console.error('Failed to expose APIs:', error)
+  // Failed to expose APIs
 
   // Fallback: try window global
   // @ts-ignore

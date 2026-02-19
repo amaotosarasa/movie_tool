@@ -101,7 +101,6 @@ export class ZipHandler {
 
       return tempPath
     } catch (error) {
-      console.error('Temp file creation failed:', error)
       throw error
     }
   }
@@ -111,73 +110,38 @@ export class ZipHandler {
    */
   async extractFile(zipPath: string, internalPath: string): Promise<Buffer> {
     try {
-      console.log(`=== ZIP EXTRACT DEBUG START ===`)
-      console.log(`ZIP Path: ${zipPath}`)
-      console.log(`Internal Path: ${internalPath}`)
-
       const zip = new AdmZip(zipPath)
       const allEntries = zip.getEntries()
-      console.log(`ZIP contains ${allEntries.length} total entries:`)
-      allEntries.forEach((e, i) => {
-        console.log(`  [${i}] Raw entry: "${e.entryName}"`)
-        const decoded = FileNameHandler.decodeZipFileName(e)
-        console.log(`      Decoded: "${decoded}"`)
-      })
 
       // まずデコード済みパスで検索
-      console.log(`Step 1: Searching by direct path: "${internalPath}"`)
       let entry = zip.getEntry(internalPath)
-      if (entry) {
-        console.log(`✓ Found entry directly: ${entry.entryName}`)
-      }
 
       // 見つからない場合、マッピングキャッシュから元のエントリ名を取得
       if (!entry) {
-        console.log(`Step 2: Checking mapping cache...`)
         const zipMapping = ZipHandler.pathMappingCache.get(zipPath)
-        console.log(`Cache exists: ${!!zipMapping}`)
-        if (zipMapping) {
-          console.log(`Cache entries: ${zipMapping.size}`)
-          for (const [key, value] of zipMapping.entries()) {
-            console.log(`  Cache: "${key}" -> "${value}"`)
-          }
-        }
-
         if (zipMapping && zipMapping.has(internalPath)) {
           const originalEntryName = zipMapping.get(internalPath)!
           entry = zip.getEntry(originalEntryName)
-          console.log(`✓ Found entry by cached mapping: ${originalEntryName} -> ${internalPath}`)
         }
       }
 
       // それでも見つからない場合、全エントリを検索（フォールバック）
       if (!entry) {
-        console.log(`Step 3: Fallback - scanning all entries for: "${internalPath}"`)
         for (const e of allEntries) {
           const decodedPath = FileNameHandler.decodeZipFileName(e)
-          console.log(`  Comparing: "${decodedPath}" === "${internalPath}"`)
           if (decodedPath === internalPath) {
             entry = e
-            console.log(`✓ Found entry by decoded path: ${e.entryName} -> ${decodedPath}`)
             break
           }
         }
       }
 
       if (!entry) {
-        console.log(`❌ Entry not found: ${internalPath}`)
-        console.log(`=== ZIP EXTRACT DEBUG END (FAILED) ===`)
         throw this.createError(ZipErrorType.CORRUPTED_ARCHIVE, `ファイルが見つかりません: ${internalPath}`)
       }
 
-      console.log(`✓ Entry found: ${entry.entryName}`)
-      console.log(`  Size: ${entry.header.size} bytes`)
-      console.log(`  Compressed: ${entry.header.compressedSize} bytes`)
-
       // サイズチェック
       if (entry.header.size > ZipHandler.MAX_FILE_SIZE) {
-        console.log(`❌ File too large: ${entry.header.size} > ${ZipHandler.MAX_FILE_SIZE}`)
-        console.log(`=== ZIP EXTRACT DEBUG END (FAILED) ===`)
         throw this.createError(ZipErrorType.FILE_TOO_LARGE, {
           fileSize: entry.header.size,
           maxSize: ZipHandler.MAX_FILE_SIZE,
@@ -188,8 +152,6 @@ export class ZipHandler {
       // セキュリティ検証
       const validation = ZipBombDetector.validateEntry(entry)
       if (!validation.valid) {
-        console.log(`❌ Security validation failed:`, validation.issues)
-        console.log(`=== ZIP EXTRACT DEBUG END (FAILED) ===`)
         throw this.createError(ZipErrorType.ZIP_BOMB_DETECTED, {
           fileName: internalPath,
           issues: validation.issues,
@@ -198,16 +160,11 @@ export class ZipHandler {
       }
 
       // ファイル抽出
-      console.log(`Attempting to read file buffer...`)
       const buffer = zip.readFile(entry)
       if (!buffer) {
-        console.log(`❌ Failed to read file buffer`)
-        console.log(`=== ZIP EXTRACT DEBUG END (FAILED) ===`)
         throw this.createError(ZipErrorType.CORRUPTED_ARCHIVE, `ファイル読み込みに失敗: ${internalPath}`)
       }
 
-      console.log(`✅ Successfully extracted file: ${buffer.length} bytes`)
-      console.log(`=== ZIP EXTRACT DEBUG END (SUCCESS) ===`)
       return buffer
     } catch (error) {
       if (error instanceof Error && 'type' in error) {
@@ -309,8 +266,6 @@ export class ZipHandler {
       const zipMapping = ZipHandler.pathMappingCache.get(zipPath)!
       // 意味のある名前をキーとして、元のエントリ名をマッピング
       zipMapping.set(meaningfulPath, entry.entryName)
-
-      console.log(`Mapping: "${meaningfulPath}" -> "${entry.entryName}"`)
 
       // ZipFileInfo作成
       // pathプロパティは一意識別子として使用するが、URL形式ではない形にする

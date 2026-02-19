@@ -36,10 +36,10 @@ function getImageSrc(file: MediaFile, generateFileUrl?: (file: MediaFile) => str
     const fileUrl = `file:///${filePath}`
     return fileUrl
   } catch (err) {
-    console.error('Error converting image path to URL:', err)
+    // Error converting image path to URL
     // ZIPファイルの場合はエラー画像を返す
     if (file.isZipContent) {
-      console.warn('ZIP file URL generation failed, returning error indicator')
+      // ZIP file URL generation failed, returning error indicator
       return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjMzIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5FUlJPUjwvdGV4dD48L3N2Zz4='
     }
     return file.path
@@ -140,7 +140,7 @@ export function ImageViewer({ file, viewMode, spreadPages, generateFileUrl }: Im
               return newMap
             })
           } catch (error) {
-            console.error(`Failed to extract temp file for ${tempKey}:`, error)
+            // Failed to extract temp file
           }
         }
       }
@@ -562,13 +562,7 @@ export function ImageViewer({ file, viewMode, spreadPages, generateFileUrl }: Im
               onLoad={handleImageLoad}
               onError={(e) => {
                 const img = e.currentTarget
-                console.error('Failed to load spread image (left):', {
-                  path: spreadPages.left!.path,
-                  src: img.src,
-                  error: e,
-                  naturalWidth: img.naturalWidth,
-                  naturalHeight: img.naturalHeight
-                })
+                // Failed to load spread image (left)
               }}
               draggable={false}
             />
@@ -584,13 +578,7 @@ export function ImageViewer({ file, viewMode, spreadPages, generateFileUrl }: Im
               onLoad={handleImageLoad}
               onError={(e) => {
                 const img = e.currentTarget
-                console.error('Failed to load spread image (right):', {
-                  path: spreadPages.right!.path,
-                  src: img.src,
-                  error: e,
-                  naturalWidth: img.naturalWidth,
-                  naturalHeight: img.naturalHeight
-                })
+                // Failed to load spread image (right)
               }}
               draggable={false}
             />
@@ -609,13 +597,7 @@ export function ImageViewer({ file, viewMode, spreadPages, generateFileUrl }: Im
             onLoad={handleImageLoad}
             onError={(e) => {
               const img = e.currentTarget
-              console.error('Failed to load single image:', {
-                path: file.path,
-                src: img.src,
-                error: e,
-                naturalWidth: img.naturalWidth,
-                naturalHeight: img.naturalHeight
-              })
+              // Failed to load single image
             }}
             draggable={false}
           />

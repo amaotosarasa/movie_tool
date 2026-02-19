@@ -32,24 +32,24 @@ export function VideoPlayer({ file, generateFileUrl }: VideoPlayerProps) {
       try {
         // ZIPファイル内のファイルの場合は、generateFileUrl関数を使用
         if (mediaFile.isZipContent && generateFileUrl) {
-          console.log('Using ZIP file URL generation for video')
+          // Using ZIP file URL generation for video
           return generateFileUrl(mediaFile)
         }
 
         // 通常の動画ファイルの場合は、HTML5 video要素互換性のためfile://プロトコルを直接使用
-        console.log('Using direct file:// protocol for video compatibility')
+        // Using direct file:// protocol for video compatibility
         const filePath = mediaFile.path.replace(/\\/g, '/')
         const fileUrl = `file:///${filePath}`
-        console.log('Generated file:// URL for video:', fileUrl)
+        // Generated file:// URL for video
         return fileUrl
       } catch (err) {
-        console.error('Error converting file path to URL:', err)
+        // Error converting file path to URL
         return mediaFile.path
       }
     }
 
     const url = convertFilePathToUrl(file)
-    console.log('Setting video source to:', url)
+    // Setting video source
     setVideoSrc(url)
 
     // 動画要素のロード強制実行
@@ -60,9 +60,9 @@ export function VideoPlayer({ file, generateFileUrl }: VideoPlayerProps) {
       // 2秒後に自動プレイを試行（デバッグ目的）
       setTimeout(() => {
         if (video.readyState >= 2) { // HAVE_CURRENT_DATA以上
-          console.log('Auto-attempting play due to ready state:', video.readyState)
+          // Auto-attempting play due to ready state
           video.play().catch(error => {
-            console.log('Auto-play failed (expected):', error.message)
+            // Auto-play failed (expected)
           })
         }
       }, 2000)
@@ -115,7 +115,7 @@ export function VideoPlayer({ file, generateFileUrl }: VideoPlayerProps) {
     const video = videoRef.current
 
     if (!video) {
-      console.error('Video element not found')
+      // Video element not found
       return
     }
 
@@ -128,7 +128,7 @@ export function VideoPlayer({ file, generateFileUrl }: VideoPlayerProps) {
         setIsPlaying(true)
       }
     } catch (error) {
-      console.error('Error toggling video playback:', error)
+      // Error toggling video playback
       setError(`再生エラー: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
@@ -253,15 +253,7 @@ export function VideoPlayer({ file, generateFileUrl }: VideoPlayerProps) {
         }}
         onError={(e) => {
           const videoElement = e.target as HTMLVideoElement
-          console.error('Video error details:', {
-            filePath: file.path,
-            videoSrc,
-            error: e,
-            videoError: videoElement.error,
-            networkState: videoElement.networkState,
-            readyState: videoElement.readyState,
-            currentSrc: videoElement.currentSrc
-          })
+          // Video error occurred
 
           let errorMessage = `動画の読み込みに失敗しました: ${file.name}`
 
@@ -287,21 +279,18 @@ export function VideoPlayer({ file, generateFileUrl }: VideoPlayerProps) {
           setError(errorMessage)
         }}
         onLoadedData={() => {
-          console.log('Video loaded successfully')
+          // Video loaded successfully
           setError('')
         }}
         onCanPlayThrough={() => {
-          console.log('Video can play through')
+          // Video can play through
         }}
         onLoadStart={() => {
-          console.log('Video load started')
+          // Video load started
         }}
         onProgress={(e) => {
           const video = e.target as HTMLVideoElement
-          console.log('Loading progress:', {
-            buffered: video.buffered.length > 0 ? video.buffered.end(0) : 0,
-            duration: video.duration
-          })
+          // Loading progress logged
         }}
       />
 

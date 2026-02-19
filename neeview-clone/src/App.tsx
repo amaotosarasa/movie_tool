@@ -166,7 +166,6 @@ function App() {
         setError(`フォルダ内にメディアファイルが見つかりませんでした。\nフォルダ: ${currentFolder}`)
       }
     } catch (error) {
-      console.error('Failed to scan folder:', error)
       const errorMessage = error instanceof Error ? error.message : 'フォルダのスキャンに失敗しました。'
       setError(`スキャンエラー: ${errorMessage}`)
     } finally {
@@ -218,7 +217,6 @@ function App() {
         }
       }
     } catch (error) {
-      console.error('Failed to open folder:', error)
       const errorMessage = error instanceof Error ? error.message : 'フォルダの選択に失敗しました。'
       setError(`フォルダ選択エラー: ${errorMessage}`)
       setCurrentFolder(null)
@@ -267,9 +265,7 @@ function App() {
         setError(`ZIPファイル内にメディアファイルが見つかりませんでした。\nファイル: ${zipFilePath}\n総ファイル数: ${info.fileCount}`)
       }
 
-      console.log(`ZIP loaded: ${info.mediaFileCount} media files out of ${info.fileCount} total files`)
     } catch (error) {
-      console.error('Failed to open ZIP file:', error)
       const errorMessage = error instanceof Error ? error.message : 'ZIPファイルの処理に失敗しました。'
       setError(`ZIP処理エラー: ${errorMessage}`)
       setIsZipMode(false)
@@ -331,7 +327,6 @@ function App() {
         setCurrentFolder(null)
       }
     } catch (error) {
-      console.error('Failed to open file:', error)
       const errorMessage = error instanceof Error ? error.message : 'ファイルの選択に失敗しました。'
       setError(`ファイル選択エラー: ${errorMessage}`)
     }
@@ -391,7 +386,6 @@ function App() {
       const newState = await window.api.toggleFullscreen()
       setIsFullscreen(newState)
     } catch (error) {
-      console.error('Failed to toggle fullscreen:', error)
       setError('フルスクリーンの切り替えに失敗しました。')
     }
   }
@@ -403,7 +397,6 @@ function App() {
       const newState = await window.api.exitFullscreen()
       setIsFullscreen(newState)
     } catch (error) {
-      console.error('Failed to exit fullscreen:', error)
       setError('フルスクリーンの終了に失敗しました。')
     }
   }
@@ -417,7 +410,7 @@ function App() {
         const state = await window.api.getFullscreenState()
         setIsFullscreen(state)
       } catch (error) {
-        console.error('Failed to get fullscreen state:', error)
+        // Silent error
       }
     }
 
