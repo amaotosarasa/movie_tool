@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { MediaFile } from '../../App'
-import { ViewMode } from '../../types/electron'
+import { ViewMode } from '../../types/electron.d'
 
 interface SpreadPages {
   left: MediaFile | null
@@ -11,20 +11,50 @@ interface ImageViewerProps {
   file: MediaFile
   viewMode: ViewMode
   spreadPages: SpreadPages
+  generateFileUrl?: (file: MediaFile) => string
 }
 
-function getImageSrc(file: MediaFile): string {
-  return file.path.startsWith('safe-file:')
-    ? file.path
-    : `safe-file:${file.path.replace(/\\/g, '/')}`
+function getImageSrc(file: MediaFile, generateFileUrl?: (file: MediaFile) => string, zipTempUrls?: Map<string, string>): string {
+  try {
+    // ZIPファイル内の画像の場合は、一時ファイルのfile://URLを使用
+    if (file.isZipContent && file.zipPath && file.internalPath) {
+      const tempKey = `${file.zipPath}::${file.internalPath}`
+
+      // 一時ファイルが作成済みの場合はそのfile://URLを返す
+      if (zipTempUrls && zipTempUrls.has(tempKey)) {
+        const tempFilePath = zipTempUrls.get(tempKey)!
+        const fileUrl = `file:///${tempFilePath.replace(/\\/g, '/')}`
+        return fileUrl
+      }
+
+      // 一時ファイルが作成されていない場合はプレースホルダーを返す
+      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjNDQ0Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5LOADING...</dGV4dD48L3N2Zz4='
+    }
+
+    // 通常の画像ファイルの場合は、HTML5 img要素互換性のためfile://プロトコルを直接使用
+    const filePath = file.path.replace(/\\/g, '/')
+    const fileUrl = `file:///${filePath}`
+    return fileUrl
+  } catch (err) {
+    // Error converting image path to URL
+    // ZIPファイルの場合はエラー画像を返す
+    if (file.isZipContent) {
+      // ZIP file URL generation failed, returning error indicator
+      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjMzIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5FUlJPUjwvdGV4dD48L3N2Zz4='
+    }
+    return file.path
+  }
 }
 
-export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
+export function ImageViewer({ file, viewMode, spreadPages, generateFileUrl }: ImageViewerProps) {
   const [scale, setScale] = useState(1)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [fitMode, setFitMode] = useState<'fit' | 'width' | 'actual'>('fit')
+
+  // ZIP一時ファイルの状態管理
+  const [zipTempUrls, setZipTempUrls] = useState<Map<string, string>>(new Map())
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const [spreadImageSizes, setSpreadImageSizes] = useState<{
     left: { width: number; height: number } | null
@@ -78,6 +108,46 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
       rightWidth: rightDisplayWidth
     }
   }, [isSpread, spreadImageSizes])
+
+  // ZIP一時ファイル作成処理
+  useEffect(() => {
+    const extractZipImages = async () => {
+      const filesToExtract: MediaFile[] = []
+
+      // 単ページモードでZIPファイルの場合
+      if (file.isZipContent && file.zipPath && file.internalPath) {
+        filesToExtract.push(file)
+      }
+
+      // 見開きモードでZIPファイルの場合
+      if (isSpread && spreadPages.left?.isZipContent && spreadPages.left?.zipPath && spreadPages.left?.internalPath) {
+        filesToExtract.push(spreadPages.left)
+      }
+      if (isSpread && spreadPages.right?.isZipContent && spreadPages.right?.zipPath && spreadPages.right?.internalPath) {
+        filesToExtract.push(spreadPages.right)
+      }
+
+      // 新しい一時ファイル要求がある場合は処理
+      for (const zipFile of filesToExtract) {
+        const tempKey = `${zipFile.zipPath}::${zipFile.internalPath}`
+        if (!zipTempUrls.has(tempKey)) {
+          try {
+            const tempFilePath = await window.api.extractZipToTempFile(zipFile.zipPath!, zipFile.internalPath!)
+
+            setZipTempUrls(prev => {
+              const newMap = new Map(prev)
+              newMap.set(tempKey, tempFilePath)
+              return newMap
+            })
+          } catch (error) {
+            // Failed to extract temp file
+          }
+        }
+      }
+    }
+
+    extractZipImages()
+  }, [file.path, file.isZipContent, file.zipPath, file.internalPath, isSpread, spreadPages.left, spreadPages.right, zipTempUrls])
 
   // Reset view when file changes
   useEffect(() => {
@@ -253,8 +323,8 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
     if (isSpread && spreadPages.left && spreadPages.right) {
       // 見開きモードの場合：どちらの画像がロードされたかを判定
       const imgSrc = img.src
-      const leftSrc = getImageSrc(spreadPages.left)
-      const rightSrc = getImageSrc(spreadPages.right)
+      const leftSrc = getImageSrc(spreadPages.left, generateFileUrl, zipTempUrls)
+      const rightSrc = getImageSrc(spreadPages.right, generateFileUrl, zipTempUrls)
 
       if (imgSrc === leftSrc) {
         // 左側の画像
@@ -481,7 +551,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
             }}
           >
             <img
-              src={getImageSrc(spreadPages.left!)}
+              src={getImageSrc(spreadPages.left!, generateFileUrl, zipTempUrls)}
               alt={spreadPages.left!.name}
               className="max-w-none select-none block"
               style={{
@@ -491,12 +561,13 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
               }}
               onLoad={handleImageLoad}
               onError={(e) => {
-                console.error('Failed to load image:', spreadPages.left!.path, e)
+                const img = e.currentTarget
+                // Failed to load spread image (left)
               }}
               draggable={false}
             />
             <img
-              src={getImageSrc(spreadPages.right!)}
+              src={getImageSrc(spreadPages.right!, generateFileUrl, zipTempUrls)}
               alt={spreadPages.right!.name}
               className="max-w-none select-none block"
               style={{
@@ -506,7 +577,8 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
               }}
               onLoad={handleImageLoad}
               onError={(e) => {
-                console.error('Failed to load image:', spreadPages.right!.path, e)
+                const img = e.currentTarget
+                // Failed to load spread image (right)
               }}
               draggable={false}
             />
@@ -514,7 +586,7 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
         ) : (
           // 単ページ表示
           <img
-            src={getImageSrc(file)}
+            src={getImageSrc(file, generateFileUrl, zipTempUrls)}
             alt={file.name}
             className="select-none"
             style={{
@@ -524,7 +596,8 @@ export function ImageViewer({ file, viewMode, spreadPages }: ImageViewerProps) {
             }}
             onLoad={handleImageLoad}
             onError={(e) => {
-              console.error('Failed to load image:', file.path, e)
+              const img = e.currentTarget
+              // Failed to load single image
             }}
             draggable={false}
           />

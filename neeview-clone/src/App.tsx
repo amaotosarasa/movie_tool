@@ -4,10 +4,14 @@ import { FileList } from './components/FileList/FileList'
 import { ImageViewer } from './components/ImageViewer/ImageViewer'
 import { VideoPlayer } from './components/VideoPlayer/VideoPlayer'
 import { WindowControls } from './components/WindowControls/WindowControls'
-import { MediaFileInfo, ScanOptions, ViewMode, BindingDirection } from './types/electron'
+import { MediaFileInfo, ScanOptions, ViewMode, BindingDirection, ZipFileInfo, ZipScanOptions } from './types/electron.d'
 
-export type MediaFile = Omit<MediaFileInfo, 'modified'> & {
+export type MediaFile = (Omit<MediaFileInfo, 'modified'> | Omit<ZipFileInfo, 'modified'>) & {
   modified: Date
+  // ZIP関連のプロパティ（ZipFileInfoにある場合）
+  zipPath?: string
+  internalPath?: string
+  isZipContent?: boolean
 }
 
 function App() {
@@ -24,6 +28,10 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('single')
   const [bindingDirection, setBindingDirection] = useState<BindingDirection>('right-to-left')
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false)
+
+  // ZIP関連の状態
+  const [isZipMode, setIsZipMode] = useState<boolean>(false)
+  const [currentZipPath, setCurrentZipPath] = useState<string | null>(null)
 
   // 見開きモードでのペアインデックスの先頭に揃える
   const getSpreadAlignedIndex = (index: number): number => {
@@ -78,10 +86,38 @@ function App() {
     setCurrentIndex(alignedIndex)
   }
 
-  const convertToMediaFile = (fileInfo: MediaFileInfo): MediaFile => ({
+  const convertToMediaFile = (fileInfo: MediaFileInfo | ZipFileInfo): MediaFile => ({
     ...fileInfo,
     modified: new Date(fileInfo.modified)
   })
+
+  // ZIP対応のURL生成
+  const generateFileUrl = (file: MediaFile): string => {
+
+    if (file.isZipContent && file.zipPath && file.internalPath) {
+      // ZIP内ファイル用URL: safe-file://zip::{zipPath}::{internalPath}
+      // パスの各部分を個別にエンコード
+      const encodedZipPath = encodeURIComponent(file.zipPath)
+      const encodedInternalPath = encodeURIComponent(file.internalPath)
+
+      const zipUrl = `safe-file://zip::${encodedZipPath}::${encodedInternalPath}`
+      return zipUrl
+    } else {
+      // 通常ファイルの処理をファイル種別で分ける
+      if (file.type === 'video') {
+        // 動画ファイルは VideoPlayer で直接 file:// プロトコルを使用するため
+        // App.tsx側では safe-file:// を返すが、実際はVideoPlayerで上書きされる
+      } else if (file.type === 'image') {
+        // 画像ファイルも ImageViewer で直接 file:// プロトコルを使用するため
+        // App.tsx側では safe-file:// を返すが、実際はImageViewerで上書きされる
+      }
+
+      // 通常ファイル用URL - safe-file:// プロトコルを返すが、実際は各コンポーネントで上書きされる
+      const encodedPath = encodeURIComponent(file.path)
+      const regularUrl = `safe-file://${encodedPath}`
+      return regularUrl
+    }
+  }
 
   const rescanFolder = async () => {
     if (!currentFolder) {
@@ -130,7 +166,6 @@ function App() {
         setError(`フォルダ内にメディアファイルが見つかりませんでした。\nフォルダ: ${currentFolder}`)
       }
     } catch (error) {
-      console.error('Failed to scan folder:', error)
       const errorMessage = error instanceof Error ? error.message : 'フォルダのスキャンに失敗しました。'
       setError(`スキャンエラー: ${errorMessage}`)
     } finally {
@@ -182,7 +217,6 @@ function App() {
         }
       }
     } catch (error) {
-      console.error('Failed to open folder:', error)
       const errorMessage = error instanceof Error ? error.message : 'フォルダの選択に失敗しました。'
       setError(`フォルダ選択エラー: ${errorMessage}`)
       setCurrentFolder(null)
@@ -191,6 +225,57 @@ function App() {
     }
   }
 
+  // ZIP専用のファイル処理
+  const handleOpenZipFile = async (zipFilePath: string) => {
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      if (!window.api?.scanZip) {
+        throw new Error('ZIP機能が利用できません。アプリケーションを再起動してください。')
+      }
+
+      // ZIPファイルをスキャン
+      const scanOptions: ZipScanOptions = {
+        sortBy,
+        sortOrder,
+        validateZip: true
+      }
+
+      const { files: zipFiles, info } = await window.api.scanZip(zipFilePath, scanOptions)
+
+      if (!Array.isArray(zipFiles)) {
+        throw new Error('ZIPスキャンの結果が不正です。')
+      }
+
+      const mediaFiles = zipFiles.map(convertToMediaFile)
+
+      // ZIP関連の状態を設定
+      setIsZipMode(true)
+      setCurrentZipPath(zipFilePath)
+      setFiles(mediaFiles)
+      setCurrentFolder(null) // Clear folder context
+
+      if (mediaFiles.length > 0) {
+        setCurrentFile(mediaFiles[0])
+        setCurrentIndex(0)
+      } else {
+        setCurrentFile(null)
+        setCurrentIndex(0)
+        setError(`ZIPファイル内にメディアファイルが見つかりませんでした。\nファイル: ${zipFilePath}\n総ファイル数: ${info.fileCount}`)
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'ZIPファイルの処理に失敗しました。'
+      setError(`ZIP処理エラー: ${errorMessage}`)
+      setIsZipMode(false)
+      setCurrentZipPath(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // 通常ファイルとZIPファイルを統合したファイル選択
   const handleOpenFile = async () => {
     if (!window.api?.openFile) {
       setError('ファイル選択機能が利用できません。アプリケーションを再起動してください。')
@@ -205,6 +290,13 @@ function App() {
         const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || 'unknown'
         const fileExt = fileName.split('.').pop()?.toLowerCase() || ''
 
+        // ZIPファイルかチェック
+        if (fileExt === 'zip') {
+          await handleOpenZipFile(filePath)
+          return
+        }
+
+        // 通常のメディアファイル処理
         let type: 'image' | 'video' | 'unknown' = 'unknown'
         if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(fileExt)) {
           type = 'image'
@@ -213,7 +305,7 @@ function App() {
         }
 
         if (type === 'unknown') {
-          setError(`サポートされていないファイル形式です: ${fileExt}\n対応形式: 画像 (jpg, png, gif, webp, bmp, svg), 動画 (mp4, avi, mkv, mov, wmv, flv, webm)`)
+          setError(`サポートされていないファイル形式です: ${fileExt}\n対応形式: 画像 (jpg, png, gif, webp, bmp, svg), 動画 (mp4, avi, mkv, mov, wmv, flv, webm), ZIP (zip)`)
           return
         }
 
@@ -221,17 +313,20 @@ function App() {
           path: filePath,
           name: fileName,
           type,
-          size: 0, // Would be populated by file system API
-          modified: new Date()
+          size: 0,
+          modified: new Date(),
+          isZipContent: false
         }
 
+        // 通常ファイルモードに設定
+        setIsZipMode(false)
+        setCurrentZipPath(null)
         setFiles([file])
         setCurrentFile(file)
         setCurrentIndex(0)
-        setCurrentFolder(null) // Clear folder context when opening single file
+        setCurrentFolder(null)
       }
     } catch (error) {
-      console.error('Failed to open file:', error)
       const errorMessage = error instanceof Error ? error.message : 'ファイルの選択に失敗しました。'
       setError(`ファイル選択エラー: ${errorMessage}`)
     }
@@ -291,7 +386,6 @@ function App() {
       const newState = await window.api.toggleFullscreen()
       setIsFullscreen(newState)
     } catch (error) {
-      console.error('Failed to toggle fullscreen:', error)
       setError('フルスクリーンの切り替えに失敗しました。')
     }
   }
@@ -303,7 +397,6 @@ function App() {
       const newState = await window.api.exitFullscreen()
       setIsFullscreen(newState)
     } catch (error) {
-      console.error('Failed to exit fullscreen:', error)
       setError('フルスクリーンの終了に失敗しました。')
     }
   }
@@ -317,7 +410,7 @@ function App() {
         const state = await window.api.getFullscreenState()
         setIsFullscreen(state)
       } catch (error) {
-        console.error('Failed to get fullscreen state:', error)
+        // Silent error
       }
     }
 
@@ -436,6 +529,7 @@ function App() {
           file={currentFile}
           viewMode={viewMode}
           spreadPages={spreadPages}
+          generateFileUrl={generateFileUrl}
         />
       )
     }
@@ -448,10 +542,11 @@ function App() {
             file={currentFile}
             viewMode={viewMode}
             spreadPages={{ left: currentFile, right: null }}
+            generateFileUrl={generateFileUrl}
           />
         )
       case 'video':
-        return <VideoPlayer file={currentFile} />
+        return <VideoPlayer file={currentFile} generateFileUrl={generateFileUrl} />
       default:
         return (
           <div className="flex-1 flex items-center justify-center text-gray-400">

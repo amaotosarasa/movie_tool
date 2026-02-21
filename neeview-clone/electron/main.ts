@@ -2,8 +2,17 @@ import { app, BrowserWindow, shell, ipcMain, dialog, protocol } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { readdirSync, statSync } from 'fs'
-import { extname } from 'path'
-import type { MediaFileInfo, ScanOptions } from '../src/types/electron'
+import { extname, basename, dirname } from 'path'
+import { copyFile } from 'fs/promises'
+import type { MediaFileInfo, ScanOptions, ZipScanOptions } from '../src/types/electron.d'
+import { ZipHandler } from '../src/utils/zipHandler'
+import { TempFileManager } from '../src/utils/tempFileManager'
+import { tmpdir } from 'os'
+
+// Register custom protocol schemes before app ready
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'safe-file', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
+])
 
 function createWindow(): void {
   // Create the browser window.
@@ -18,7 +27,12 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false
+      webSecurity: false,
+      allowRunningInsecureContent: true,
+      experimentalFeatures: true,
+      enableRemoteModule: false,
+      // 動画ファイルの直接アクセスを有効にする追加設定
+      backgroundThrottling: false
     }
   })
 
@@ -68,11 +82,156 @@ function createWindow(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Register custom protocol for local files
-  protocol.registerFileProtocol('safe-file', (request, callback) => {
-    const url = request.url.substr(10) // Remove 'safe-file:' prefix
-    callback(decodeURIComponent(url))
+  // Set app to handle safe-file protocol globally
+  app.setAsDefaultProtocolClient('safe-file')
+
+  // Register custom protocol for local files and ZIP contents (hybrid approach)
+  protocol.registerBufferProtocol('safe-file', async (request, callback) => {
+    try {
+      // Extract and decode path from URL
+      let filePath = request.url.replace('safe-file://', '')
+      filePath = decodeURIComponent(filePath)
+
+      // Check if this is a ZIP file request: zip::{zipPath}::{internalPath}
+      if (filePath.startsWith('zip::')) {
+        const parts = filePath.split('::')
+
+        if (parts.length === 3) {
+          const [, encodedZipPath, encodedInternalPath] = parts
+
+          // エンコードされたパスをデコード
+          const zipPath = decodeURIComponent(encodedZipPath)
+          const internalPath = decodeURIComponent(encodedInternalPath)
+
+          try {
+            const zipHandler = new ZipHandler()
+            const buffer = await zipHandler.extractFile(zipPath, internalPath)
+            const mimeType = getMimeType(internalPath)
+
+            // For ZIP files, return buffer directly
+            callback({ mimeType, data: buffer })
+            return
+          } catch (error) {
+            callback({ error: -6 })
+            return
+          }
+        } else {
+          callback({ error: -6 })
+          return
+        }
+      }
+
+      // Regular file handling - fix Windows path issues
+      let cleanPath = filePath
+
+      // Windows path normalization:
+      // Handle common Windows path patterns from URL parsing
+      if (cleanPath.startsWith('/') && cleanPath.length > 1) {
+        // Remove leading slash if it looks like a Windows absolute path
+        if (/^\/[A-Za-z][:/\\]/.test(cleanPath)) {
+          cleanPath = cleanPath.substring(1)
+        }
+      }
+
+      // Smart file handling: use temp files for videos to bypass HTML5 limitations
+      const { readFile, stat } = await import('fs/promises')
+      const mimeType = getMimeType(cleanPath)
+
+      // Check if this is a video file
+      const isVideo = mimeType.startsWith('video/')
+
+      if (isVideo) {
+        // For video files, create a temporary file and redirect to file:// protocol
+        // This allows HTML5 video elements to properly stream large files
+
+        try {
+          // Check file size first
+          const stats = await stat(cleanPath)
+
+          // Generate unique temp file name
+          const uniqueId = Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+          const ext = extname(cleanPath)
+          const tempFileName = `video_${uniqueId}${ext}`
+          const tempFilePath = join(tmpdir(), 'neeview-temp', tempFileName)
+
+          // Ensure temp directory exists
+          const { mkdir } = await import('fs/promises')
+          await mkdir(dirname(tempFilePath), { recursive: true })
+
+          // Copy file to temp location (this handles any size file efficiently)
+          await copyFile(cleanPath, tempFilePath)
+
+          // Return redirect to file:// protocol which HTML5 video can handle
+          const fileUrl = `file:///${tempFilePath.replace(/\\/g, '/')}`
+
+          // Schedule cleanup after 1 hour
+          setTimeout(async () => {
+            try {
+              const { unlink } = await import('fs/promises')
+              await unlink(tempFilePath)
+            } catch (cleanupError) {
+              // Silent cleanup error
+            }
+          }, 3600000) // 1 hour
+
+          // Return a redirect response
+          callback({
+            statusCode: 302,
+            headers: {
+              'Location': fileUrl,
+              'Access-Control-Allow-Origin': '*'
+            }
+          })
+          return
+
+        } catch (videoError) {
+          callback({ error: -6 })
+          return
+        }
+      }
+
+      // For non-video files (images), use direct buffer approach
+      const buffer = await readFile(cleanPath)
+
+      // Provide complete headers for image display
+      callback({
+        mimeType,
+        data: buffer,
+        headers: {
+          'Content-Length': buffer.length.toString(),
+          'Cache-Control': 'public, max-age=3600'
+        }
+      })
+
+    } catch (error) {
+      callback({ error: -6 })
+    }
   })
+
+  // Helper function for MIME type detection
+  function getMimeType(filePath: string): string {
+    const ext = extname(filePath).toLowerCase()
+    const mimeTypes: { [key: string]: string } = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.bmp': 'image/bmp',
+      '.svg': 'image/svg+xml',
+      '.mp4': 'video/mp4',
+      '.avi': 'video/x-msvideo',
+      '.mkv': 'video/x-matroska',
+      '.mov': 'video/quicktime',
+      '.wmv': 'video/x-ms-wmv',
+      '.webm': 'video/webm',
+      '.flv': 'video/x-flv',
+      '.zip': 'application/zip',
+      '.rar': 'application/x-rar-compressed',
+      '.7z': 'application/x-7z-compressed'
+    }
+    return mimeTypes[ext] || 'application/octet-stream'
+  }
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron.neeview-clone')
@@ -115,7 +274,7 @@ function setupIpcHandlers() {
       filters: [
         {
           name: 'Media Files',
-          extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm']
+          extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'zip', 'rar', '7z']
         },
         {
           name: 'Image Files',
@@ -178,7 +337,6 @@ function setupIpcHandlers() {
       const mediaFiles = await scanFolderForMediaFiles(folderPath, scanOptions)
       return mediaFiles
     } catch (error) {
-      console.error('Failed to scan folder:', error)
       throw error
     }
   })
@@ -206,6 +364,135 @@ function setupIpcHandlers() {
   ipcMain.handle('window:get-fullscreen-state', () => {
     const window = BrowserWindow.getFocusedWindow()
     return window ? window.isFullScreen() : false
+  })
+
+  // ZIP operations handlers
+  setupZipHandlers()
+}
+
+// ZIP related IPC handlers
+function setupZipHandlers() {
+  // Initialize TempFileManager
+  TempFileManager.initialize().catch(error => {
+    // Silent error
+  })
+
+  // Create temp directory for video files asynchronously
+  import('fs/promises').then(async ({ mkdir }) => {
+    const tempDir = join(tmpdir(), 'neeview-temp')
+    await mkdir(tempDir, { recursive: true }).catch(error => {
+      // Silent error
+    })
+  })
+
+  // ZIP temp file extraction
+  ipcMain.handle('zip:extractToTempFile', async (_, zipPath: string, internalPath: string): Promise<string> => {
+    try {
+      const zipHandler = new ZipHandler()
+      return await zipHandler.extractToTempFile(zipPath, internalPath)
+    } catch (error) {
+      throw error
+    }
+  })
+
+  // ZIP file scanning
+  ipcMain.handle('zip:scan', async (_, zipPath: string, options?: ZipScanOptions) => {
+    try {
+      const zipHandler = new ZipHandler()
+      const files = await zipHandler.listMediaFiles(zipPath, options)
+      const info = await zipHandler.validateZip(zipPath)
+      return { files, info }
+    } catch (error) {
+      throw error
+    }
+  })
+
+  // ZIP file extraction
+  ipcMain.handle('zip:extractFile', async (_, zipPath: string, internalPath: string, options?: { priority?: 'high' | 'normal' }) => {
+    try {
+      const zipHandler = new ZipHandler()
+      const buffer = await zipHandler.extractFile(zipPath, internalPath)
+
+      // Save to temp file
+      const tempFilePath = await TempFileManager.saveTempFile(buffer, internalPath, zipPath)
+
+      // Update access time for cache management
+      TempFileManager.updateAccess(tempFilePath)
+
+      return tempFilePath
+    } catch (error) {
+      throw error
+    }
+  })
+
+  // ZIP validation
+  ipcMain.handle('zip:validate', async (_, zipPath: string) => {
+    try {
+      const zipHandler = new ZipHandler()
+      const info = await zipHandler.validateZip(zipPath)
+      return info
+    } catch (error) {
+      throw error
+    }
+  })
+
+  // ZIP temp file cleanup
+  ipcMain.handle('zip:cleanupTemp', async (_, zipPath?: string) => {
+    try {
+      if (zipPath) {
+        return await TempFileManager.cleanupZip(zipPath)
+      } else {
+        return await TempFileManager.cleanupAll()
+      }
+    } catch (error) {
+      throw error
+    }
+  })
+
+  // ZIP cache optimization
+  ipcMain.handle('zip:optimizeCache', async () => {
+    try {
+      const stats = TempFileManager.getTempDirectoryStats()
+      const cleanupResult = await TempFileManager.cleanupOldFiles()
+
+      return {
+        freed: cleanupResult.cleaned,
+        remaining: stats.fileCount - cleanupResult.cleaned
+      }
+    } catch (error) {
+      throw error
+    }
+  })
+
+  // ZIP operation cancellation (basic implementation for Phase 2)
+  ipcMain.handle('zip:cancelOperation', async (_, operationId: string) => {
+    try {
+      // Phase 2: Basic implementation - always return false (not implemented)
+      return false
+    } catch (error) {
+      throw error
+    }
+  })
+
+  // ZIP operation progress (basic implementation for Phase 2)
+  ipcMain.handle('zip:getProgress', async (_, operationId: string) => {
+    try {
+      // Phase 2: Basic implementation - always return null (not implemented)
+      return null
+    } catch (error) {
+      throw error
+    }
+  })
+
+  // ZIP files preloading (basic implementation for Phase 2)
+  ipcMain.handle('zip:preloadFiles', async (_, zipPath: string, filePaths: string[]) => {
+    try {
+      // Phase 2: Basic implementation - log only
+      // In Phase 3, this will implement background extraction
+      return Promise.resolve()
+    } catch (error) {
+      throw error
+    }
   })
 }
 
@@ -257,13 +544,13 @@ async function scanFolderForMediaFiles(folderPath: string, options: ScanOptions 
                 })
               }
             } catch (statError) {
-              console.warn(`Failed to get stats for file: ${fullPath}`, statError)
+              // Silent error
             }
           }
         }
       }
     } catch (error) {
-      console.warn(`Failed to read directory: ${dirPath}`, error)
+      // Silent error
     }
   }
 

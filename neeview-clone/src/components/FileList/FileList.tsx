@@ -65,7 +65,7 @@ export function FileList({ files, currentIndex, onFileSelect }: FileListProps) {
       <div className="flex-1 overflow-y-auto">
         {files.map((file, index) => (
           <div
-            key={file.path}
+            key={`${file.path}-${file.modified}-${index}`}
             className={`file-item ${index === currentIndex ? 'selected' : ''}`}
             onClick={() => onFileSelect(file, index)}
             title={`${file.path}\n更新: ${formatDate(file.modified)}\nサイズ: ${formatFileSize(file.size)}`}
